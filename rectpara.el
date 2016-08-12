@@ -512,11 +512,11 @@ down it to the lower left corner."
 
 
 
-;; rectpara-mode-find-rectpara-boundaries -
-;
-;; The General Algorithm is find left bound, move to left bound, find top
-;; and bottom bounds, then iterate through the lines, checking the
-;; line lengths.  Select the maximum as the rectpara right bound.
+;; rectpara-mode-find-rectpara-boundaries
+
+;; Find left bound, move to left bound, find top and bottom bounds,
+;; then iterate through the lines, checking the line lengths.
+;; Select the maximum as the rectpara right bound.
 
 (defun rectpara-mode-find-rectpara-boundaries ()
   "Find boundaries of rectpara cursor is inside of.
@@ -524,7 +524,7 @@ Returns list of coords: x1 y1 x2 y2"
   (let (left bot top right)
     (save-excursion
       (setq left (rectpara-mode-find-left-boundary))
-      (rectpara-mode-move-column left) ; Better than (rectpara-mode-move-left-boundary) -- redundant
+      (rectpara-mode-move-column left) ;; Better than (rectpara-mode-move-left-boundary) -- redundant
       (setq bot (rectpara-mode-find-lower-boundary))
       (setq top (rectpara-mode-find-upper-boundary))
       (setq right (rectpara-mode-find-right-boundary left top bot))
@@ -653,18 +653,66 @@ Returns list of coords: x1 y1 x2 y2"
 
 ;;;
 
-;;; someday generalize things like this to take optional coords
-;;; parameter make current rectpara just the default
+(defun rectpara-mode-find-rectpara-boundaries ()
+  "Find boundaries of rectpara cursor is inside of.
+Returns list of coords: x1 y1 x2 y2"
+  (let (left bot top right)
+    (save-excursion
+      (setq left (rectpara-mode-find-left-boundary))
+      (rectpara-mode-move-column left) ;; Better than (rectpara-mode-move-left-boundary) -- redundant
+      (setq bot (rectpara-mode-find-lower-boundary))
+      (setq top (rectpara-mode-find-upper-boundary))
+      (setq right (rectpara-mode-find-right-boundary left top bot))
+      (list left top right bot))))      ; x1 y1, x2 y2
 
-(defun rectpara-mode-extract-rectpara ()
-"Extract the current rectangle"
+
+
+
+;; A re-write figuring on being in the edit mode buffer, oriented
+;; toward grabbing everything in the buffer, even if it's multiple
+;; rectparas.
+;; (It could be it's silly to go after getting rectangle boundaries,
+;; but it fits existing code.)
+
+(defun rectpara-mode-edit-find-rectangle-boundaries ()
+  "Find boundaries of rectpara cursor is inside of.
+Returns list of coords: x1 y1 x2 y2"
+  (let (left bot top right)
+    (save-excursion
+      (setq left 1)  ;; 1 based indexing, right?
+      (setq top  1)
+      (goto-char (point-min))  ;; so: skip the "mystery" kludge then?
+      (let ( (i     0)
+             (max   0)
+             (candi 0)
+             (width 0) )
+        (while (<= i (point-max))
+          (move-end-of-line 1) ;; really need that 1?  huh?
+          (setq candi (current-column))
+
+          (if (> candi max) (setq max candi))
+
+          (forward-line) ;; or whatever move down one
+          (setq i (1+ i))
+          )
+        (setq right (+ 1 max)) ;; TODO add one yes? current-column uses 0-based indexing.
+
+        (setq bot
+              (count-lines (point-min) (point-max))) ;; TODO need to add one maybe
+       (list left top right bot)))))      ; x1 y1, x2 y2
+
+;; was: rectpara-mode-extract-rectpara
+(defun rectpara-mode-edit-extract-rectpara ()
+  "Extract the current rectangle"
   (let (coords start-end start end rectpara)
-    (setq coords (rectpara-mode-find-rectpara-boundaries))
+;;     (setq coords (rectpara-mode-find-rectpara-boundaries))
+    (setq coords (rectpara-mode-edit-find-rectangle-boundaries))
     (setq start-end (rectpara-mode-convert-coords-to-start-end coords))
     (setq start (car start-end))
     (setq end (nth 1 start-end))
-    (setq rectpara (extract-rectangle start end))))
 
+    (setq rectpara (extract-rectangle start end))
+   ))
 
 (defun rectpara-mode-get-width-rectpara (rectpara)
 "Get the width of the given rectpara"
@@ -772,13 +820,9 @@ Returns list of coords: x1 y1 x2 y2"
 ;;; can still overwrite material on the right.
 ;;; should automatically move things aout of the way.
 
-;;; BUG:  If you've subdivided the edited rectpara
-;;; into two, the second rectpara gets lost on reinsertion.
-
 (defun rectpara-mode-return-from-edit-rectpara ()
   "Replace edited rectpara into the original file inserting space as needed."
   (interactive)
-
   (let* (
         rectpara
         left top right bot
@@ -791,8 +835,9 @@ Returns list of coords: x1 y1 x2 y2"
         )
 
     ;; Note: we're in the edit buffer window now
-    (goto-char (point-min)) ; kludge trying to cover mystery problem (see above)
-    (setq rectpara (rectpara-mode-extract-rectpara))
+;;    (goto-char (point-min)) ; kludge trying to cover mystery problem (see above)
+    (setq rectpara (rectpara-mode-edit-extract-rectpara))
+
     (rectpara-mode-zap-this-edit-window target_buffer)
 
     (let* (
@@ -812,66 +857,22 @@ Returns list of coords: x1 y1 x2 y2"
            (right (nth 2 coords))
            (bot   (nth 3 coords))
 
-           new_width new_height old_width old_height
-           vertical_delta  blank_lines_needed
-           temp_hidden_rectparas
-           empirical_correction_shift
+           (new_width (rectpara-mode-get-width-rectpara rectpara))
+           (old_width (- right left))
+
+           (new_height (length rectpara))
+           (old_height (1+ (- bot top)))
           )
 
       ;; TODO SOMEDAY: cover case of horizontal expansion, opening
       ;;               blank columns needed to the right.
-      (setq new_width (rectpara-mode-get-width-rectpara rectpara))
-      (setq old_width (- right left))
       (if (> new_width old_width)
-          (message "WARNING: gotten fatter: changed to %d from %d" new_width old_width))
+          (message "WARNING: gotten fatter: changed to %d from %d" new_width old_width)
+        )
 
-      (setq new_height (length rectpara))
-      (setq old_height (1+ (- bot top)))
-
-      ;; if the new rectangle has gotten taller we temporarily
-      ;; hide all other rectparas adjacent to the old bottom
-      ;; edge, insert blanks lines, then restore the adjacent
-      ;; rectparas where they were.
       (if (> new_height old_height)
-
-;; rectpara-mode-deal-with-vertical-expansion
-;; would need to pass in
-;;   new_height old_height
-;;   coords (and unpack to  bot left right )
-
-;; only place used (move declarations down):
-;;   vertical_delta
-;;   empirical_correction_shift
-;;   blank_lines_needed
-;;   temp_hidden_rectparas
-
-          (
-
-           (lambda ()
-            (message "gotten taller: changed to %d from %d" new_height old_height)
-            (setq vertical_delta (- new_height old_height))
-
-            (rectpara-mode-move-row bot)
-            (setq toe_room
-                  (rectpara-mode-open-how-far-down
-                     vertical_delta left right))
-
-            ;; TODO stupid hack:
-            ;; when vertical expansion is 1, 2 works here, 3 works otherwise.
-            (if (> vertical_delta 1)
-                (setq empirical_correction_shift 3) ;
-              (setq empirical_correction_shift 2))
-
-            ;; difference in toe_room and expansion is how much we need to open
-            (setq blank_lines_needed
-                  (+ (- vertical_delta toe_room) empirical_correction_shift) )
-
-            (setq temp_hidden_rectparas
-                  (rectpara-mode-extract-rectpars-with-coords-on-line))
-            (picture-open-line  blank_lines_needed) ;; insert blank lines
-            (rectpara-mode-restore-rectparas-from-list temp_hidden_rectparas)
-
-           ))) ;; end if lambda
+          (rectpara-mode-deal-with-vertical-expansion new_height old_height coords)
+        )
 
       (rectpara-mode-move-to-x-y-location left top)
 
@@ -879,16 +880,60 @@ Returns list of coords: x1 y1 x2 y2"
       (exchange-point-and-mark)
     )))
 
+(defun rectpara-mode-deal-with-vertical-expansion (new_height old_height coords)
+  "Juggle things out of the way so expanded rectpara will fit."
+  ;; if the new rectangle has gotten taller we temporarily
+  ;; hide all other rectparas adjacent to the old bottom
+  ;; edge, insert blanks lines, then restore the adjacent
+  ;; rectparas where they were.
+  (let* (
+         (left  (nth 0 coords))
+         ;; (top   (nth 1 coords))
+         (right (nth 2 coords))
+         (bot   (nth 3 coords))
+
+         (vertical_delta (- new_height old_height))
+
+         toe_room
+         blank_lines_needed
+         temp_hidden_rectparas
+         empirical_correction_shift
+         )
+
+;;       (message "rectpara gotten taller: changed to %d from %d"
+;;                new_height old_height) ;; DEBUG
+
+      (rectpara-mode-move-row bot)
+      (setq toe_room
+            (rectpara-mode-open-how-far-down vertical_delta left right))
+
+      ;; TODO hack:
+      ;; when vertical expansion is 1, 2 works here, 3 works otherwise.
+      (if (> vertical_delta 1)
+          (setq empirical_correction_shift 3) ;
+        (setq empirical_correction_shift 2))
+
+      ;; difference in toe_room and expansion is how much we need to open
+      (setq blank_lines_needed
+            (+ (- vertical_delta toe_room) empirical_correction_shift) )
+
+      (setq temp_hidden_rectparas
+            (rectpara-mode-extract-rectpars-with-coords-on-line))
+      (picture-open-line  blank_lines_needed) ;; insert blank lines
+      (rectpara-mode-restore-rectparas-from-list temp_hidden_rectparas)
+    ))
+
+
 (defun rectpara-mode-metadata-from-this-edit-buffer-name ()
   "Interprets the current edit_buffer name, extracting target
 buffer and x/y coordinates.  Returns a list of the two (where
 the coordinates are themselves a list of 4).
-Note: the current buffer is expected to have a name like:
+Note: the edit buffer is expected to have a name like:
   *rectpara edit: 8-61-30-231 PRETENTIOUS_RAMBLINGS*
 "
-;; pick out the original buffer name (there at the end) and the
-;; coordinate values (x1 y1 x2 y2) defining the original rectangle
-;; (those are in the third field, hyphen separated).
+;; we need to pick out the original buffer name (there at the end) and
+;; the coordinate values (x1 y1 x2 y2) defining the original rectangle
+;; (those are in the middle, a hyphen separated list).
   (let ((edit_buffer (buffer-name))
         templist
         )
@@ -902,14 +947,12 @@ Note: the current buffer is expected to have a name like:
                          (split-string (nth 2 templist) "-")))
 
 
+    ;; To get the actual buffer name to return to, we need to truncate
+    ;; at the asterix. Also chops any emacs versioning like "<2>"
     (setq target_buffer (car (split-string (nth 3 templist) "*")))
-       ; To get the actuall buffer name to return to, we
-       ; need to truncate at the asterix. Also
-       ; chops any emacs versioning like "<2>"
 
     (list target_buffer coords)
    ))
-
 
 (defun rectpara-mode-zap-this-edit-window (rectpara-buffer)
   "Close the currently active edit window and return to the source RECTPARA-BUFFER."
