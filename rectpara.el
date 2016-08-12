@@ -51,20 +51,15 @@ some additional commands to select or edit a rectpara:
   (if (auto-fill-mode)
     (auto-fill-mode)))
 
-
-
-
-
 ;;; Grabbing Alt o as the doOomfile-mode prefix
 (define-key rectpara-mode-map "\M-oe" 'rectpara-mode-edit-rectpara)
 (define-key rectpara-mode-map "\M-or" 'rectpara-mode-select-rectpara)
 
 (define-key rectpara-mode-map "\M-o\C-c" 'rectpara-mode-exit)
 
-
 ;; The following is cloned from picture-mode-exit.
 ;; (Can't just use the original, because it checks
-;; the mode to make sure it's a picture).
+;; the mode to make sure it's in picture).
 
 (defun rectpara-mode-exit (&optional nostrip)
   "Undo rectpara-mode and return to previous major mode.
@@ -72,7 +67,7 @@ With no argument strips whitespace from end of every line in Picture buffer
   otherwise just return to previous mode."
   (interactive "P")
   (if (not (eq major-mode 'rectpara-mode))
-      (error "You aren't editing a Doomfile.")
+      (error "You aren't in rectpara-mode.")
     (if (not nostrip) (picture-clean))
     (setq mode-name picture-mode-old-mode-name)
     (use-local-map picture-mode-old-local-map)
@@ -82,9 +77,9 @@ With no argument strips whitespace from end of every line in Picture buffer
     (force-mode-line-update)))
 
 
-;;; Following functions are largely designed to make
-;;; it easier to edit existing rectparas.  You can
-;;; use keystroke commands to:
+;;; EDITING RECTPARAS
+
+;;; Commands are provided to:
 
 ;;;   o automatically select the rectpara the cursor is on
 
@@ -130,12 +125,11 @@ With no argument strips whitespace from end of every line in Picture buffer
 ;; The boundaries of a rectpara are determined as follows:
 ;
 ;;   Presume cursor is inside the rectpara of interest.
-;;   Crawl leftward, looking for two adjacent vertical strips of three spaces
-;;   Crawl down the left edge, until a horizontal stretch of three spaces is found.
-;;   Crawl up the left edge, until a horizontal stretch of three spaces is found.
-;;   Sweep from top to bottom, looking at the length of each line, find the longest.
-;;      Line ends are defined by this regexp:
-;;          "[^.?!:]  \\|[.?!:]   " ; match 2 spaces or 3 after hard-stop
+;;   Crawl leftward, looking for two adjacent cols of space, three spaces high
+;;   Crawl down the left edge, until a row with three spaces is found.
+;;   Crawl up the left edge, until a row with three spaces is found.
+;;   Find the longest line where, line ends are defined by this regexp:
+;;      "[^.?!:]  \\|[.?!:]   " ; match 2 spaces or 3 after hard-stop
 
 ;;; Documenting some of the nitty gritty of how the code works:
 
@@ -171,13 +165,6 @@ With no argument strips whitespace from end of every line in Picture buffer
 ;;    (if (looking-at "[ \t]*$")
 ;; which is presumably the kind of thing I should be doing.
 
-;;; Control structures...
-;;  The style of control structures here can probably be infered
-;;  from reading the documentation for rectpara-mode-find-left-boundary
-;;  All these functions use the same idioms (e.g. while loops that
-;;  exit when the desired quantity is finally defined,  while loops
-;;  that increment a location pointer, frequently with
-;;  a catch and throw wrapper for early exit, and so on).
 
 ;;; Data structures:
 
@@ -233,7 +220,7 @@ With no argument strips whitespace from end of every line in Picture buffer
 ;; and extracted again later by "rectpara-mode-return-from-edit-rectpara"
 
 ;; An example edit buffer name:
-;;   *doomfile edit: 8-61-30-231 PRETENTIOUS_RAMBLINGS*
+;;   *rectpara edit: 8-61-30-231 PRETENTIOUS_RAMBLINGS*
 
 ;; (I didn't understand buffer local variables when I came
 ;; up with this trick.)
@@ -247,7 +234,7 @@ With no argument strips whitespace from end of every line in Picture buffer
     (beginning-of-line)
     (not (char-before))))
 
-(defun blofp ()
+(defun last-line-p ()
   "Return t if on the bottom line of the file, nil otherwise"
   (save-excursion
     (end-of-line)
@@ -537,15 +524,10 @@ Returns list of coords: x1 y1 x2 y2"
   (let (left bot top right)
     (save-excursion
       (setq left (rectpara-mode-find-left-boundary))
-
       (rectpara-mode-move-column left) ; Better than (rectpara-mode-move-left-boundary) -- redundant
-
       (setq bot (rectpara-mode-find-lower-boundary))
-
       (setq top (rectpara-mode-find-upper-boundary))
-
       (setq right (rectpara-mode-find-right-boundary left top bot))
-
       (list left top right bot))))      ; x1 y1, x2 y2
 
 
@@ -576,7 +558,7 @@ Returns list of coords: x1 y1 x2 y2"
       (while (progn ; crawl to right, look for end of this line
                (if (looking-at "[^.?!:]  \\|[.?!:]   ") ; match 2 spaces or 3 after hard-stop
                    (setq rp_line_end (current-column)))
-               (picture-forward-column 5)
+               (picture-forward-column  5)
                (picture-backward-column 4)
                (not rp_line_end)))
       ; looking for longest line
@@ -726,7 +708,7 @@ Returns list of coords: x1 y1 x2 y2"
     (one-window-p 't)
 
     (setq edit_buffer_name
-          (format "*doomfile edit: %d-%d-%d-%d %s*" left top right bot (buffer-name)))
+          (format "*rectpara edit: %d-%d-%d-%d %s*" left top right bot (buffer-name)))
 
     (setq buffy (generate-new-buffer edit_buffer_name))
 
@@ -737,153 +719,13 @@ Returns list of coords: x1 y1 x2 y2"
     ;;; Suspect that this would work by itself, rather than the above line:
     ;;;       (set-fill-column (current-column))
 
-     (local-set-key "\C-x#" 'rectpara-mode-return-from-edit-rectpara)
+    ;; TODO AUGUST should go into a rectpara-edit-mode here to protect keymaps of Fundamental or text-mode...
+
+     (local-set-key "\C-x#"    'rectpara-mode-return-from-edit-rectpara)
      (local-set-key "\C-c\C-c" 'rectpara-mode-return-from-edit-rectpara)
      (message "Use either C-x # or C-c c-c to replace the original rectpara with your edits")
      ))
 
-
-;;;
-
-;;; Odd bug, sometimes messes with whitespace to right
-;;; of inserted rectpara, sometimes adding or deleting one space
-;;; (adding is more common).
-
-;;; This seems to help (elimates the space adding, but not
-;;; the rarer deletion case?):
-
-;;;     (goto-char (point-min)) ; kludge trying to workaround a mystery problem
-
-
-;;;
-
-;; rectpara-mode-return-from-edit-rectpara - Handles the
-;; most common case tolerably well:  If edited rectpara
-;; has gotten taller (had lines added) will add that much
-;; whitespace so that it can't over-write anything below
-;; it, without messing with rectparas adajcent to it.
-
-;; STATUS:  working, but not exactly elegant.
-
-;;; BUG: horizontal expansion of edited rectpara
-;;; can overwrite material on the right.
-;;; should automatically move things on the right
-;;; further right.
-
-;;; BUG:  If there's not room at end-of-buffer,
-;;; reinsertion crashes completely.  Should just
-;;; append some whitespace first.
-
-;;; BUG:  If you've subdivided the edited rectpara
-;;; into two, the second rectpara gets lost on reinsertion.
-
-(defun rectpara-mode-return-from-edit-rectpara ()
-  "Replace edited rectpara into the original file inserting space as needed."
-  (interactive)
-
-  ; The current buffer is expected to have a name like:
-  ;   *doomfile edit: 8-61-30-231 PRETENTIOUS_RAMBLINGS*
-
-  ; need to pick out the original buffer name (at the end) and the
-  ; coordinate values (x1 y1 x2 y2) defining the original rectangle
-  ; (these are in the third field, hyphen separated).
-
-  (let ((edit_buffer (buffer-name))
-        templist start end rectpara start-end coords
-        left top right bot
-        edit_buffer_window)
-
-    (setq templist (split-string edit_buffer " "))
-
-    (if (not (string= (car templist) "*doomfile"))
-        (error "This is not a doomfile edit buffer: %s" edit_buffer))
-
-    (setq coords (mapcar 'string-to-number
-                         (split-string (nth 2 templist) "-")))
-
-    (setq target_buffer (car (split-string (nth 3 templist) "*")))
-       ; To get the actuall buffer name to return to, we
-       ; need to truncate at the asterix. Also
-       ; chops any emacs versioning like "<2>"
-
-    (goto-char (point-min)) ; kludge trying to workaround a mystery problem
-    (setq rectpara (rectpara-mode-extract-rectpara))
-
-;;; INSTEAD OF:
-;;    (switch-to-buffer target_buffer)
-;;; TRYING:
-    (setq edit_buffer_window (selected-window))
-    (delete-window edit_buffer_window)
-    (set-buffer target_buffer)
-;;; OKAY?
-
-    (setq start-end (rectpara-mode-convert-coords-to-start-end coords))
-    (setq start (car start-end))
-    (setq end (nth 1 start-end))
-
-    (clear-rectangle start end)
-
-    ; rectpara size change collision avoidance:
-
-    ;  if the rectpara has grown during editing, must
-    ;  insert whitespace in the target buffer in an approprate way
-
-    (setq left  (nth 0 coords))
-    (setq top   (nth 1 coords))
-    (setq right (nth 2 coords))
-    (setq bot   (nth 3 coords))
-
-    (let (new_width new_height old_width old_height
-          vertical_expansion horizontal_expansion
-          vertical_shift horizontal_shift
-          temp_hidden_rectparas
-          empirical_correction_shift)
-
-      (setq new_width (rectpara-mode-get-width-rectpara rectpara))
-      (setq old_width (- right left))
-      (if (> new_width old_width)
-          (message "gotten fatter: changed to %d from %d" new_width old_width))
-
-      (setq new_height (length rectpara))
-      (setq old_height (1+ (- bot top)))
-
-      ; if the new rectangle has gotten taller
-      ; we will temporarily hide all other
-      ; rectparas adjacent to the old bottom edge,
-      ; insert blanks lines, then restore the adjacent
-      ; rectparas where they were.
-      (if (> new_height old_height)
-          ((lambda ()
-            (message "gotten taller: changed to %d from %d" new_height old_height)
-            (setq vertical_expansion (- new_height old_height))
-
-            (rectpara-mode-move-row bot)
-            (setq toe_room
-                  (rectpara-mode-look-down-how-far-to-end-of-whitespace vertical_expansion left right))
-
-            ; stupid hack:
-            (if (> vertical_expansion 1)
-                (setq empirical_correction_shift 3) ; i.e. fudge
-              (setq empirical_correction_shift 2))
-            ; fudge of 2 works for an expansion of 1, 3 works otherwise.  Not resolved.
-
-            (setq vertical_shift (+ (- vertical_expansion toe_room) empirical_correction_shift) )
-
-            (setq temp_hidden_rectparas (rectpara-mode-extract-rectpars-with-coords-on-line))
-
-            (picture-open-line vertical_shift) ; opening horizontal space
-
-            ;; TODO theory that picture-open-line has bug with EOB
-            ;; (open-line vertical_shift) ; opening horizontal space
-            ;;  (call-interactively (open-line vertical_shift)) ; opening horizontal space
-
-            (rectpara-mode-restore-rectparas-from-list temp_hidden_rectparas))))
-
-    (rectpara-mode-move-to-x-y-location left top)
-
-    (picture-insert-rectangle rectpara)
-    (exchange-point-and-mark)
-    )))
 
 
 ;;; This is how I'm trying to handle:
@@ -906,7 +748,180 @@ Returns list of coords: x1 y1 x2 y2"
 ;;; got to watch out for secondary effects, move rectparas
 ;;; in the way of other rectparas... recursive method?
 
-;;;
+;;; TODO mystery ws tweak kludge
+;;; Odd bug, sometimes messes with whitespace to right
+;;; of inserted rectpara, sometimes adding or deleting one space
+;;; (adding is more common).
+
+;;; This seems to help (elimates the space adding, but not
+;;; the rarer deletion case?):
+
+;;;     (goto-char (point-min)) ; kludge trying to workaround a mystery problem
+
+
+
+;; rectpara-mode-return-from-edit-rectpara - Handles the
+;; most common case well:  If edited rectpara
+;; has gotten taller (had lines added) will add that much
+;; whitespace so that it can't over-write anything below
+;; it, without messing with rectparas adajcent to it.
+
+;; STATUS:  working, but not exactly elegant.
+
+;;; BUG: horizontal expansion of edited rectpara
+;;; can still overwrite material on the right.
+;;; should automatically move things aout of the way.
+
+;;; BUG:  If you've subdivided the edited rectpara
+;;; into two, the second rectpara gets lost on reinsertion.
+
+(defun rectpara-mode-return-from-edit-rectpara ()
+  "Replace edited rectpara into the original file inserting space as needed."
+  (interactive)
+
+  (let* (
+        rectpara
+        left top right bot
+        edit_buffer_window
+
+        (buffer_md
+         (rectpara-mode-metadata-from-this-edit-buffer-name))
+        (target_buffer (nth 0 buffer_md))
+        (coords        (nth 1 buffer_md))
+        )
+
+    ;; Note: we're in the edit buffer window now
+    (goto-char (point-min)) ; kludge trying to cover mystery problem (see above)
+    (setq rectpara (rectpara-mode-extract-rectpara))
+    (rectpara-mode-zap-this-edit-window target_buffer)
+
+    (let* (
+           (start-end (rectpara-mode-convert-coords-to-start-end coords))
+           (start (car start-end))
+           (end   (nth 1 start-end))
+           )
+      (clear-rectangle start end)
+      )
+
+    ;; rectpara size change collision avoidance:
+    ;;   if the rectpara has grown during editing, must
+    ;;   open up whitespace in the target buffer
+    (let* (
+           (left  (nth 0 coords))
+           (top   (nth 1 coords))
+           (right (nth 2 coords))
+           (bot   (nth 3 coords))
+
+           new_width new_height old_width old_height
+           vertical_delta  blank_lines_needed
+           temp_hidden_rectparas
+           empirical_correction_shift
+          )
+
+      ;; TODO SOMEDAY: cover case of horizontal expansion, opening
+      ;;               blank columns needed to the right.
+      (setq new_width (rectpara-mode-get-width-rectpara rectpara))
+      (setq old_width (- right left))
+      (if (> new_width old_width)
+          (message "WARNING: gotten fatter: changed to %d from %d" new_width old_width))
+
+      (setq new_height (length rectpara))
+      (setq old_height (1+ (- bot top)))
+
+      ;; if the new rectangle has gotten taller we temporarily
+      ;; hide all other rectparas adjacent to the old bottom
+      ;; edge, insert blanks lines, then restore the adjacent
+      ;; rectparas where they were.
+      (if (> new_height old_height)
+
+;; rectpara-mode-deal-with-vertical-expansion
+;; would need to pass in
+;;   new_height old_height
+;;   coords (and unpack to  bot left right )
+
+;; only place used (move declarations down):
+;;   vertical_delta
+;;   empirical_correction_shift
+;;   blank_lines_needed
+;;   temp_hidden_rectparas
+
+          (
+
+           (lambda ()
+            (message "gotten taller: changed to %d from %d" new_height old_height)
+            (setq vertical_delta (- new_height old_height))
+
+            (rectpara-mode-move-row bot)
+            (setq toe_room
+                  (rectpara-mode-open-how-far-down
+                     vertical_delta left right))
+
+            ;; TODO stupid hack:
+            ;; when vertical expansion is 1, 2 works here, 3 works otherwise.
+            (if (> vertical_delta 1)
+                (setq empirical_correction_shift 3) ;
+              (setq empirical_correction_shift 2))
+
+            ;; difference in toe_room and expansion is how much we need to open
+            (setq blank_lines_needed
+                  (+ (- vertical_delta toe_room) empirical_correction_shift) )
+
+            (setq temp_hidden_rectparas
+                  (rectpara-mode-extract-rectpars-with-coords-on-line))
+            (picture-open-line  blank_lines_needed) ;; insert blank lines
+            (rectpara-mode-restore-rectparas-from-list temp_hidden_rectparas)
+
+           ))) ;; end if lambda
+
+      (rectpara-mode-move-to-x-y-location left top)
+
+      (picture-insert-rectangle rectpara)
+      (exchange-point-and-mark)
+    )))
+
+(defun rectpara-mode-metadata-from-this-edit-buffer-name ()
+  "Interprets the current edit_buffer name, extracting target
+buffer and x/y coordinates.  Returns a list of the two (where
+the coordinates are themselves a list of 4).
+Note: the current buffer is expected to have a name like:
+  *rectpara edit: 8-61-30-231 PRETENTIOUS_RAMBLINGS*
+"
+;; pick out the original buffer name (there at the end) and the
+;; coordinate values (x1 y1 x2 y2) defining the original rectangle
+;; (those are in the third field, hyphen separated).
+  (let ((edit_buffer (buffer-name))
+        templist
+        )
+
+    (setq templist (split-string edit_buffer " "))
+
+    (if (not (string= (car templist) "*rectpara"))
+        (error "This is not a rectpara edit buffer: %s" edit_buffer))
+
+    (setq coords (mapcar 'string-to-number
+                         (split-string (nth 2 templist) "-")))
+
+
+    (setq target_buffer (car (split-string (nth 3 templist) "*")))
+       ; To get the actuall buffer name to return to, we
+       ; need to truncate at the asterix. Also
+       ; chops any emacs versioning like "<2>"
+
+    (list target_buffer coords)
+   ))
+
+
+(defun rectpara-mode-zap-this-edit-window (rectpara-buffer)
+  "Close the currently active edit window and return to the source RECTPARA-BUFFER."
+  ;; This is neater behavior than just doing a (switch-to-buffer rectpara-buffer)
+  ;; TODO it just closes the window, and preserves the edit buffer.
+  ;; With greater confidence, you'd delete the edit buffer
+  ;; (could save to disk for paranoia's sake...)
+  (let* ( (edit-buffer-window (selected-window))
+          )
+    (delete-window edit-buffer-window)
+    (set-buffer rectpara-buffer)
+    ))
 
 (defun rectpara-mode-copy-rectpara-with-coords ()
   "Returns current rectpara along with a list of x-y coordinates"
@@ -1062,36 +1077,75 @@ removes them, returns them with their coordinates"
          (setq big_list (cdr big_list))))))
 
 
-(defun rectpara-mode-look-down-how-far-to-end-of-whitespace (check_distance left right)
-  "From the current row, scans down through the given check_distance,
-to see how many rows there are with whitespace between the left
-and right boundaries.  Note: the maximum return value is the
-check_distance itself."
- (save-excursion
-   (let ((i 0)
-         checkrect limit coords start-end start end)
+(defun rectpara-mode-get-line-segment-as-string (left right &optional line-number)
+  "Gets the requested piece of a line as a string.  Default: current line.
+Returns the substring between LEFT and RIGHT.  When the string is
+too short will pad with spaces (this assists in faking an infinite quarter-plane."
+  (interactive)
 
-     (setq coords (list
-                   left
-                   (picture-current-line)
-                   right
-                   (+ (picture-current-line) check_distance)))
+  (let ( (saveloc (point) )
+        line-start line-end line segment )
 
-     (setq start-end (rectpara-mode-convert-coords-to-start-end coords))
-     (setq start (car start-end))
-     (setq end (nth 1 start-end))
+    (if line-number
+        (goto-line line-number))
 
-     (setq  checkrect (extract-rectangle start end))
+    ;; snag the entire line from the buffer
+    (picture-beginning-of-line)
+    (setq line-start (point))
+    (picture-end-of-line)
+    (setq line-end (point))
 
-     (catch 'stuff
-       (while (< i check_distance)
-         (let ((line (nth i checkrect)))
-           (if (not (string-match "^[ ]*$" line))
-               (throw 'stuff (setq limit i))
-             (setq i (1+ i))
-             ))))
-     (setq limit (1+ i))  ;;; Why plus one?  Try without?
-     )))
+    (setq line
+          (buffer-substring line-start line-end))
+
+    ;; pad the line out to column indicated by 'right'
+    (setq needed_padding
+          (- right (length line) ))
+    (if (> needed_padding 0)
+        (setq line
+              (concat line
+                      (make-string needed_padding ?\ )
+                      )) )
+
+    ;; get the requested segment
+    (setq segment
+          (substring line left right))
+
+    (goto-char saveloc)
+    ;; (message "123  ret: >>%s<<" segment) ;; DEBUG
+    segment))
+
+;; Formerly: rectpara-mode-look-down-how-far-to-end-of-whitespace
+(defun rectpara-mode-open-how-far-down (checkdistance left right)
+  "Looks downward to see how far until the end of open space.
+From the current row, scans down through the given CHECKDISTANCE,
+verifying that there is whitespace between the LEFT and RIGHT
+boundaries, returning the end location.  Note: the maximum return
+value is the CHECKDISTANCE.  As a side-effect, creates lines at
+the bottom of the buffer if the region we're checking extends
+down past it."
+  (let ( (saveloc (point))
+         (i 0)
+         (limit checkdistance)
+        )
+    (catch 'UP
+      (while (< i checkdistance)
+        (let ( (line
+                (rectpara-mode-get-line-segment-as-string left right))
+               )
+
+          (if (not (string-match "^[ ]*$" line))
+              (throw 'UP (setq limit i))
+            )
+
+          ;; advance to next line, creating a blank line if at end-of-buffer
+          (picture-move-down 1)
+          (setq i (1+ i))
+          )))
+    (setq limit (1+ i))  ;;; Why plus one?  Try without? TODO
+    (goto-char saveloc)
+    limit))
+
 
 ;;; TODO
 
