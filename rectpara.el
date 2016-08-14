@@ -279,6 +279,13 @@ With no argument strips whitespace from end of every line in Picture buffer
   (goto-line row)
   (move-to-column (- col 1) 't))
 
+(defun rectpara-mode-move-to-x-y-location-alt (col row)
+  "Move to a given location, given the column and row (numbering from 1)"
+  (interactive)
+  (move-to-column (- col 1) 't)
+  (goto-line row)
+)
+
 
 (defun rectpara-mode-convert-coords-to-start-end (coords)
   "Given a list of the rectpara coordinates x1 y1 x2 y2 return
@@ -660,16 +667,24 @@ Returns list of coords: x1 y1 x2 y2"
   "Extract the current rectpara to another buffer for easy editing"
 
   (interactive)
-  (let (rectpara edit_buffer_name buffy coords start-end start end left top right bot)
+  (let ( rectpara edit_buffer_name buffy coords start-end start
+         end left top right bot pair-pos col row)
 
-    (setq rectpara-with-coords (rectpara-mode-extract-rectpara-with-coords))
+;;    (setq rectpara-with-coords (rectpara-mode-extract-rectpara-with-coords))
+    (setq rectpara-with-coords
+          (rectpara-mode-extract-rectpara-with-coords-and-rel-pos))
+
     (setq rectpara (car rectpara-with-coords))
-    (setq coords (car (cdr rectpara-with-coords)))   ; (car(cdr is right, right?
+    (setq coords   (car (cdr rectpara-with-coords)))
+    (setq pair-pos (nth 2 rectpara-with-coords))
 
     (setq left  (nth 0 coords))
     (setq top   (nth 1 coords))
     (setq right (nth 2 coords))
     (setq bot   (nth 3 coords))
+
+    (setq col  (nth 0 pair-pos))
+    (setq row  (nth 1 pair-pos))
 
     ;; force two window display when editing
     (one-window-p 't)
@@ -681,15 +696,25 @@ Returns list of coords: x1 y1 x2 y2"
 
     (switch-to-buffer-other-window buffy)
     (insert-rectangle rectpara)
+
+    ;; move to correct relative position in the new buffer
+    (rectpara-mode-move-to-x-y-location (1+ (- col left)) (1+ (- row top)))
+
+
+    ;; TODO AUGUST around here, go into a new text mode variant: rectpara-edit-mode
+
     (turn-on-auto-fill)
-    (set-fill-column (rectpara-mode-get-width-rectpara rectpara))
+    (set-fill-column
+     (rectpara-mode-get-width-rectpara rectpara))
+         ;; TODO AUGUST on return adjust fill-col first to match what's in the buffer
+
+
     ;;; Suspect that this would work by itself, rather than the above line:
     ;;;       (set-fill-column (current-column))
 
-    ;; TODO AUGUST should go into a rectpara-edit-mode here to protect keymaps of Fundamental or text-mode...
+     (local-set-key "\C-x#"    'rectpara-mode-edit-return)
+     (local-set-key "\C-c\C-c" 'rectpara-mode-edit-return)
 
-     (local-set-key "\C-x#"    'rectpara-mode-return-from-edit-rectpara)
-     (local-set-key "\C-c\C-c" 'rectpara-mode-return-from-edit-rectpara)
      (message "Use either C-x # or C-c c-c to replace the original rectpara with your edits")
      ))
 
@@ -717,7 +742,7 @@ Returns list of coords: x1 y1 x2 y2"
 
 
 
-;; rectpara-mode-return-from-edit-rectpara - Handles the
+;; rectpara-mode-edit-return - Handles the
 ;; most common case well:  If edited rectpara
 ;; has gotten taller (had lines added) will add that much
 ;; whitespace so that it can't over-write anything below
@@ -729,8 +754,15 @@ Returns list of coords: x1 y1 x2 y2"
 ;;; can still overwrite material on the right.
 ;;; should automatically move things aout of the way.
 
-(defun rectpara-mode-return-from-edit-rectpara ()
-  "Replace edited rectpara into the original file inserting space as needed."
+
+;; TODO AUGUST (quoting edit):
+;;     (turn-on-auto-fill)
+;;     (set-fill-column
+;;      (rectpara-mode-get-width-rectpara rectpara))
+;;          ;; TODO AUGUST on return adjust fill-col first to match what's in the buffer
+
+(defun rectpara-mode-edit-return ()
+  "Return edited rectpara to the original buffer inserting space as needed."
   (interactive)
   (let* (
         rectpara
@@ -899,7 +931,57 @@ Note: the edit buffer is expected to have a name like:
     (clear-rectangle start end)  ;;; extract implies removal
     (list rectpara coords)))
 
+(defun rectpara-mode-extract-rectpara-with-coords-and-rel-pos ()
+  "Returns current rectpara along with a list of x-y coordinates, clears the original rectangle"
+  (let (saveloc coords start-end start end rectpara pos-pair)
+    (setq saveloc (point)) ;; TODO use this to get relative position inside rectpara
+
+    (setq pos-pair (rectpara-mode-x-and-y-from-pos saveloc))
+
+    (setq coords (rectpara-mode-find-rectpara-boundaries))
+
+    (setq start-end (rectpara-mode-convert-coords-to-start-end coords))
+    (setq start (car start-end))
+    (setq end (nth 1 start-end))
+    (setq rectpara (extract-rectangle start end))
+    (setq rectpara (extract-rectangle start end))
+    (clear-rectangle start end)  ;;; extract implies removal
+    (list rectpara coords pos-pair)))
+
 ;;;
+
+(defun rectpara-mode-x-and-y-from-pos (&optional pos)
+  "Given position POS, return column and row pair.
+The argument pos defaults to the current point.
+The column and row numbers are 1 indexed."
+  (interactive) ;; TODO which I abuse horribly during development
+  (let ( (saveloc (point) )
+         column row
+         )
+    (unless pos
+      (setq pos saveloc))
+
+    (goto-char pos)
+    (setq column (1+ (current-column)))
+    (setq row (rectpara-mode-current-row))
+
+    (goto-char saveloc)
+    (message "r: %d c: %d" row column);; DEBUG
+    (list column row);; TODO do I have a convention on this?  row/column or x/y?
+  ))
+
+(defun rectpara-mode-current-row ()
+  "Get the row of the current position.
+Probably should be 1 indexed, no?"
+  (interactive) ;; TODO which I abuse etc.
+  (let ( (pos (point) )
+         row
+         )
+    (setq row
+          (count-lines (point-min) (1+ pos)))
+    (message "%d" row);; DEBUG
+    row))
+
 
 (defun rectpara-mode-coords-of-rectparas-on-line ()
    "Looks for all rectparas intersecting the given line and returns their coordinates"
