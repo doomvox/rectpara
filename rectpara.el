@@ -53,9 +53,14 @@ some additional commands to select or edit a rectpara:
 
 ;;; Grabbing Alt o as the doOomfile-mode prefix
 (define-key rectpara-mode-map "\M-oe" 'rectpara-mode-edit-rectpara)
+(define-key rectpara-mode-map "\M-oc" 'rectpara-mode-compose-rectpara)
+
 (define-key rectpara-mode-map "\M-or" 'rectpara-mode-select-rectpara)
 
 (define-key rectpara-mode-map "\M-o\C-c" 'rectpara-mode-exit)
+
+
+
 
 
 (define-derived-mode rectpara-edit-mode
