@@ -57,6 +57,20 @@ some additional commands to select or edit a rectpara:
 
 (define-key rectpara-mode-map "\M-o\C-c" 'rectpara-mode-exit)
 
+
+(define-derived-mode rectpara-edit-mode
+  text-mode "Rectpara Edit"
+  "Major mode for editing an individual rectparas.
+Similar to text-mode, but with an additional command to
+finish and return the rectpara to the original buffer.
+\\[rectpara-mode-edit-return].
+\\{rectpara-edit-mode-map}"
+  (turn-on-auto-fill))
+
+(define-key rectpara-edit-mode-map "\C-x#"    'rectpara-mode-edit-return)
+(define-key rectpara-edit-mode-map "\C-c\C-c" 'rectpara-mode-edit-return)
+
+
 ;; The following is cloned from picture-mode-exit.
 ;; (Can't just use the original, because it checks
 ;; the mode to make sure it's in picture).
@@ -663,20 +677,20 @@ Returns list of coords: x1 y1 x2 y2"
 
 
 ;; Nickname: "edit"
-(defun rectpara-mode-edit-rectpara ()
+(defun rectpara-mode-edit-rectpara ( &optional edit_fill_col )
   "Extract the current rectpara to another buffer for easy editing"
 
   (interactive)
-  (let ( rectpara edit_buffer_name buffy coords start-end start
+
+  (let ( rectpara edit_buffer_name edit_buffer coords start-end start
          end left top right bot pair-pos col row)
 
-;;    (setq rectpara-with-coords (rectpara-mode-extract-rectpara-with-coords))
-    (setq rectpara-with-coords
+    (setq rectpara-with-metadata
           (rectpara-mode-extract-rectpara-with-coords-and-rel-pos))
 
-    (setq rectpara (car rectpara-with-coords))
-    (setq coords   (car (cdr rectpara-with-coords)))
-    (setq pair-pos (nth 2 rectpara-with-coords))
+    (setq rectpara (car      rectpara-with-metadata))
+    (setq coords   (car (cdr rectpara-with-metadata)))
+    (setq pair-pos (nth 2    rectpara-with-metadata))
 
     (setq left  (nth 0 coords))
     (setq top   (nth 1 coords))
@@ -686,37 +700,31 @@ Returns list of coords: x1 y1 x2 y2"
     (setq col  (nth 0 pair-pos))
     (setq row  (nth 1 pair-pos))
 
+
+    (unless edit_fill_col
+      (setq edit_fill_col (rectpara-mode-get-width-rectpara rectpara))
+      )
+
     ;; force two window display when editing
     (one-window-p 't)
 
     (setq edit_buffer_name
-          (format "*rectpara edit: %d-%d-%d-%d %s*" left top right bot (buffer-name)))
+          (format "*rectpara edit: %d-%d-%d-%d %s*"
+                  left top right bot (buffer-name)))
+    (setq edit_buffer (generate-new-buffer edit_buffer_name))
 
-    (setq buffy (generate-new-buffer edit_buffer_name))
-
-    (switch-to-buffer-other-window buffy)
+    (switch-to-buffer-other-window edit_buffer)
     (insert-rectangle rectpara)
 
     ;; move to correct relative position in the new buffer
     (rectpara-mode-move-to-x-y-location (1+ (- col left)) (1+ (- row top)))
 
+    (rectpara-edit-mode)
 
-    ;; TODO AUGUST around here, go into a new text mode variant: rectpara-edit-mode
+    (set-fill-column edit_fill_col)
 
-    (turn-on-auto-fill)
-    (set-fill-column
-     (rectpara-mode-get-width-rectpara rectpara))
-         ;; TODO AUGUST on return adjust fill-col first to match what's in the buffer
-
-
-    ;;; Suspect that this would work by itself, rather than the above line:
-    ;;;       (set-fill-column (current-column))
-
-     (local-set-key "\C-x#"    'rectpara-mode-edit-return)
-     (local-set-key "\C-c\C-c" 'rectpara-mode-edit-return)
-
-     (message "Use either C-x # or C-c c-c to replace the original rectpara with your edits")
-     ))
+    (message "Use either C-x # or C-c c-c to finish editing")
+  ))
 
 
 
@@ -966,7 +974,7 @@ The column and row numbers are 1 indexed."
     (setq row (rectpara-mode-current-row))
 
     (goto-char saveloc)
-    (message "r: %d c: %d" row column);; DEBUG
+    ;; (message "r: %d c: %d" row column);; DEBUG
     (list column row);; TODO do I have a convention on this?  row/column or x/y?
   ))
 
@@ -979,7 +987,7 @@ Probably should be 1 indexed, no?"
          )
     (setq row
           (count-lines (point-min) (1+ pos)))
-    (message "%d" row);; DEBUG
+    ;; (message "%d" row);; DEBUG
     row))
 
 
@@ -1198,11 +1206,7 @@ down past it."
 ;;;    cycle through the possible choices from the last "next".
 
 ;;; o  compose-rectpara-here (like edit, but without initial text).
-
-;;; o  during an edit, should preserve the relative cursor location
-
-;;; o  the edit buffer should have it's own mode (rectpara-edit-mode)
-;;;    derived from text-mode.
+;;;    interesting bit: do a good job of guessing the fill-col
 
 
 ;;; BUGS
