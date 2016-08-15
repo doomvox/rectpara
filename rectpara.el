@@ -727,6 +727,14 @@ Returns list of coords: x1 y1 x2 y2"
   ))
 
 
+(defun rectpara-mode-compose-rectpara ()
+  "Compose a new rectpara in an edit buffer window.
+Uses an initial fill-column setting of 30."
+  (interactive)
+    (rectpara-mode-edit-rectpara 30 ) )
+
+
+
 
 ;;; This is how I'm trying to handle:
 ;;;  "rectpara size change collision problems":
@@ -1205,8 +1213,6 @@ down past it."
 ;;;    one (leftmost?).  Provide a different command to
 ;;;    cycle through the possible choices from the last "next".
 
-;;; o  compose-rectpara-here (like edit, but without initial text).
-;;;    interesting bit: do a good job of guessing the fill-col
 
 
 ;;; BUGS
