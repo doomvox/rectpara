@@ -1,16 +1,13 @@
 ;; rectpara-mode.el         Fri  December 20, 2002  22:10
-;;                    Rev:  Wed  August   10, 2016  15:46
+;;                    Rev:  Sun  August   14, 2016  19:17
 
-;; A variant of picture-mode to work on blocks of text layed out
-;; roughly as rectangles, which I call "rectparas" for "rectangular paragraphs".
+;; A variant of picture-mode to work on blocks of text layed-out roughly
+;; as rectangles. I call these "rectparas" for "rectangular paragraphs".
 ;; (see the example below).
 
 ;; This was originally called doomfile.el, because it's
 ;; original purpose was to work on "The Doomfiles"
 ;; (currently at http://obsidianrook.com/doomfiles).
-
-;; Some utility commands are also included here (for now)
-;; though they might not strictly be part of the mode.
 
 ;; Example:
 
@@ -33,6 +30,21 @@
 ;;      mode, derived            to publish it.)
 ;;      from picture-mode
 
+
+;; Installation:
+;;  Put this file into a location in your load-path, and add the following to your ~/.emacs:
+;;  (require 'rectpara-mode)
+
+;; Example use:
+;;  In a file containing text like the above rectpara example:
+;;  ESC x rectpara-mode
+;;  cursor to a rectpara, e.g. "I've always..."
+;;  M-o e
+;;    You should see that rectpara extracted to a new window
+;;    where it can be edited as standalone text. When done:
+;;  C-C C-c
+;;  That should move the edited rectpara back to the original position.
+;;
 
 (provide 'rectpara-mode)
 (eval-when-compile
@@ -1245,3 +1257,27 @@ down past it."
 ;;; on ambiguous cases? (like two-space after full-stop)
 ;;; (Same thing as clever lengths processing, but maybe
 ;;; easier to envision as a crawling around process).
+
+;;=======
+
+;; Copyright 2016 Joseph Brenner
+;; License: GPL 2.0 (see boilerplate below)
+;;
+;; Author: doom@kzsu.stanford.edu
+;; Version: 1.0
+;; X-URL: http://obsidianrook.com/rectpara/
+
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation; either version 2, or (at your option)
+;; any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program; if not, write to the Free Software
+;; Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
