@@ -79,20 +79,17 @@ some additional commands to select or edit a rectpara:
 (define-key rectpara-mode-map "\M-o\C-c" 'rectpara-exit)
 
 
-
-
-
 (define-derived-mode rectpara-edit-mode
   text-mode "Rectpara Edit"
   "Major mode for editing an individual rectparas.
 Similar to text-mode, but with an additional command to
 finish and return the rectpara to the original buffer.
-\\[rectpara-edit-mode-return].
+\\[rectpara-edit-mode-done].
 \\{rectpara-edit-mode-map}"
   (turn-on-auto-fill))
 
-(define-key rectpara-edit-mode-map "\C-x#"    'rectpara-edit-mode-return)
-(define-key rectpara-edit-mode-map "\C-c\C-c" 'rectpara-edit-mode-return)
+(define-key rectpara-edit-mode-map "\C-x#"    'rectpara-edit-mode-done)
+(define-key rectpara-edit-mode-map "\C-c\C-c" 'rectpara-edit-mode-done)
 
 
 ;; The following is cloned from picture-mode-exit.
@@ -249,27 +246,9 @@ With no argument strips whitespace from end of every line in Picture buffer
     (end-of-line)
     (not (char-after))))
 
-(defun rectpara-report-if-tlofp ()  ; for debugging
-  "Say something if you're on the top line of the file"
-  (interactive)
-  (if (tlofp) (message "stictly top line")))
-
-(defun rectpara-report_eolp ()      ; for debugging
-  "If at the end of line, say so"
-    (interactive)
-    (if (eolp)
-        (message "end o' the line, jack")
-      ))
-
-;; vertical-whitespace-p
-;
-;; Basic function to answer the question
-;; does this column look blank in this region?
-;; i.e. are there three consecutive spaces lined up
-;; on top of each other?  STATUS: WORKS
-
 (defun vertical-whitespace-p ()
-  "Check near cursor to see if there's a 3 character vertical stretch of whitespace"
+  "Check near cursor to see if there's a 3 character vertical stretch of whitespace.
+Essentially, answers the question does this column look blank in this region?"
   (save-excursion
     (let (lower_char upper_char current_char tern)
       (setq current_char (following-char))
@@ -277,11 +256,9 @@ With no argument strips whitespace from end of every line in Picture buffer
       (setq lower_char (following-char))
       (picture-move-up 2)
       (setq upper_char (following-char))
-
       (setq tern (concat (char-to-string upper_char)
                          (char-to-string current_char)
                          (char-to-string lower_char)))
-
       (string-match "^[ \t\n\000]+$" tern) )))
 
 (defun report-vertical-whitespace-p ()  ;; for debugging
@@ -307,9 +284,7 @@ then use: \\[rectpara-move-row])."
       (while (<= loop (abs delta))
         (picture-forward-column direction)
         (setq loop (1+ loop))
-        ))
-    ;; (message "I am on col: %d" (rectpara-current-column)) ;; DEBUG
-))
+        )) ))
 
 (defun rectpara-move-row ( target-row )
   "Move to a given TARGET-ROW, numbering from 1.
@@ -327,8 +302,7 @@ in any blank regions to the left of the column."
       (while (<= loop (abs delta))
         (picture-move-down direction)
         (setq loop (1+ loop))
-        ))
-    ))
+        )) ))
 
 
 (defun rectpara-move-to-x-y-location-lite (col row)
@@ -438,9 +412,9 @@ you're in the buffer with the rectpara."
   (move-to-column (- (rectpara-find-left-boundary) 1) 't))
 
 ;;;
-;; TODO might be better if this did not require working down the left
-;; boundary-- scattered spaces (and the ragged right edge) can
-;; complicate doing this elsewhere, though.
+;; TODO might be better if this did not *require* working on the left
+;; boundary, but scattered spaces (and the ragged right edge) can
+;; complicate doing this elsewhere.
 (defun rectpara-find-lower-boundary ()
   "Find lower boundary of a rectpara. First row is 1.
 Expects to be started on the left boundary, and crawl down it to
@@ -583,7 +557,7 @@ Returns list of coords: x1 y1 x2 y2"
     (while (<= line bot)
       (while (progn ; crawl to right, look for end of this line
                (if (looking-at "[^.?!:]  \\|[.?!:]   ") ; match 2 spaces or 3 after hard-stop
-                   (setq rp_line_end (current-column)))
+                   (setq rp_line_end (1+ (current-column))))
                (picture-forward-column  5)
                (picture-backward-column 4)
                (not rp_line_end)))
@@ -595,21 +569,19 @@ Returns list of coords: x1 y1 x2 y2"
       (setq line (1+ line))
       (setq rp_line_end 'nil)
       (rectpara-move-column left))
-    (setq col (+ col 2))))) ;; empirically determined need for +2
-                            ;; one is due to (current-column) numbering from 0
-                            ;; the other because eol regexp works from one-char back (?)
+    (setq col (+ col 1))
+    col)))
 
-
-;; TODO debug intermittant extra line problem?  Or just ignore?
+;; TODO there's an intermittant select of an extra line.  Debug or just ignore?
+;; nickname: "select"
 (defun rectpara-select-rectpara ()
   "Select the current rectpara.
 i.e. place mark and point so that a rectangle surrounds the
 current rectpara with the region active."
   (interactive)
-  (let (
-        (coords (rectpara-find-rectpara-boundaries)) ;; (list left top right bot)
-        left top right bot
-        )
+  (let ( (coords (rectpara-find-rectpara-boundaries)) ;; (list left top right bot)
+         left top right bot
+         )
     (setq left  (car coords))
     (setq top   (nth 1 coords))
     (setq right (nth 2 coords))
@@ -620,8 +592,8 @@ current rectpara with the region active."
     (rectpara-move-column right)
     (rectpara-move-row bot)
 
-    ;; NOTE: The above WORKS.  Have the boundaries of rectpara.
-    ;; Need to set mark and point and leave the region active
+    ;; now have the boundaries of rectpara...
+    ;; set mark and point and leave the region active
     (let ( (future_mark (point)) )
 
       ;; move point to upper-left hand corner
@@ -631,9 +603,8 @@ current rectpara with the region active."
       ;; makes region active (works *most* of the time... but do NOT think about that).
       (push-mark future_mark t t)
     )
-
     (message "left: %d top: %d right: %d bottom: %d" left top right bot)
-    ))
+  ))
 
 (defun rectpara-find-rectpara-boundaries ()
   "Find boundaries of rectpara cursor is inside of.
@@ -645,7 +616,7 @@ Returns list of coords: x1 y1 x2 y2"
       (setq bot (rectpara-find-lower-boundary))
       (setq top (rectpara-find-upper-boundary))
       (setq right (rectpara-find-right-boundary left top bot))
-      (list left top right bot))))      ; x1 y1, x2 y2
+      (list left top right bot))))      ;; x1 y1, x2 y2
 
 
 ;; An alternate version that assumes you're in the edit mode
@@ -708,9 +679,7 @@ Returns list of coords: x1 y1 x2 y2"
 ;; Nickname: "edit"
 (defun rectpara-edit-rectpara ( &optional edit_fill_col )
   "Extract the current rectpara to another buffer for easy editing"
-
   (interactive)
-
   (let ( rectpara edit_buffer_name edit_buffer coords start-end start
          end left top right bot pair-pos col row)
 
@@ -728,7 +697,6 @@ Returns list of coords: x1 y1 x2 y2"
 
     (setq col  (nth 0 pair-pos))
     (setq row  (nth 1 pair-pos))
-
 
     (unless edit_fill_col
       (setq edit_fill_col (rectpara-get-width-rectpara rectpara))
@@ -799,8 +767,8 @@ you can get mysterious args out of range errors and the like."
 ;;; in the way of other rectparas: use a recursive method?
 
 
-
-;; rectpara-edit-mode-return - Handles the
+;; ========
+;; rectpara-edit-mode-done - Handles the
 ;; most common case well:  If edited rectpara
 ;; has gotten taller (had lines added) will add that much
 ;; whitespace so that it can't over-write anything below
@@ -812,11 +780,12 @@ you can get mysterious args out of range errors and the like."
 ;;; can still overwrite material on the right.
 ;;; should automatically move things aout of the way.
 
-(defun rectpara-edit-mode-return ()
-  "Return edited rectpara to the original buffer inserting space as needed."
+;; nickname: "done"
+(defun rectpara-edit-mode-done ()
+  "Return edited rectpara to the original buffer.
+If increased in size, opens up white space as needed."
   (interactive)
   (let* (
-        rectpara
         left top right bot
         edit_buffer_window
 
@@ -824,20 +793,13 @@ you can get mysterious args out of range errors and the like."
          (rectpara-edit-mode-buffer-metadata-from-name))
         (target_buffer (nth 0 buffer_md))
         (coords        (nth 1 buffer_md))
+
+        ;; Note: we're still in the edit buffer window
+        (new-rectpara (rectpara-edit-extract-rectpara))
         )
 
-    ;; Note: we're in the edit buffer window now
-    (setq rectpara (rectpara-edit-extract-rectpara))
-
+    ;; leaving the edit buffer window
     (rectpara-zap-this-edit-window target_buffer)
-
-    (let* (
-           (start-end (rectpara-convert-coords-to-start-end coords))
-           (start (car start-end))
-           (end   (nth 1 start-end))
-           )
-      (clear-rectangle start end)
-      )
 
     ;; rectpara size change collision avoidance:
     ;;   if the rectpara has grown during editing, must
@@ -848,31 +810,31 @@ you can get mysterious args out of range errors and the like."
            (right (nth 2 coords))
            (bot   (nth 3 coords))
 
-           (new_width (rectpara-get-width-rectpara rectpara))
-           (old_width (- right left))
+           (new_width (rectpara-get-width-rectpara new-rectpara))
+           (old_width (1+ (- right left)))
 
-           (new_height (length rectpara))
+           (new_height (length new-rectpara))
            (old_height (1+ (- bot top)))
           )
 
       (if (> new_width old_width)
-          (rectpara-deal-with-horizontal-expansion-stub new_width old_width coords)
-        )
+          (rectpara-deal-with-horizontal-expansion new_width old_width coords) )
 
       (if (> new_height old_height)
-          (rectpara-deal-with-vertical-expansion new_height old_height coords)
-        )
+          (rectpara-deal-with-vertical-expansion new_height old_height coords) )
 
-      ;; TODO this isn't quite right.  Preserve former relative location?
-      ;;      Go to bottom, ready to skip to next node?
+      (rectpara-clear-rectangle coords)
+
+      ;; TODO do insert conditionally?  if not adviseable, open up edit window again and warn.
       (rectpara-move-to-x-y-location-lite left top)
+      (picture-insert-rectangle new-rectpara)
 
-      ;; TODO
-      ;; really, only do this if collison avoidence was successful or not needed (go to cond)
-      (picture-insert-rectangle rectpara)
+      ;; TODO replace this with a jump to lower right hand corner?
+      ;;      (but then: if you wanna re-edit, it could be an annoyance...)
       (exchange-point-and-mark)
     )))
 
+;; nickname: "vertical"
 (defun rectpara-deal-with-vertical-expansion (new_height old_height coords)
   "Juggle things out of the way so expanded rectpara will fit."
   ;; if the new rectangle has gotten taller we temporarily
@@ -887,14 +849,11 @@ you can get mysterious args out of range errors and the like."
 
          (vertical_delta (- new_height old_height))
 
-         toe_room
-         blank_lines_needed
-         temp_hidden_rectparas
-         empirical_correction_shift
+           toe_room
+           blank_lines_needed
+           temp_hidden_rectparas
+           empirical_correction_shift
          )
-
-;;       (message "rectpara gotten taller: changed to %d from %d"
-;;                new_height old_height) ;; DEBUG
 
       (rectpara-move-row bot)
       (setq toe_room
@@ -916,14 +875,8 @@ you can get mysterious args out of range errors and the like."
       (rectpara-restore-rectparas-from-list temp_hidden_rectparas)
     ))
 
-
-(defun rectpara-deal-with-horizontal-expansion-stub (new_width old_width coords)
-  "Stub to use until following function is ready: rectpara-deal-with-horizontal-expansion."
-  (message "WARNING: gotten fatter: changed to %d from %d ..." new_width old_width) ;; DEBUG STUB
-)
-
-;; TODO AUGUST (sigh)
-(defun rectpara-deal-with-horizontal-expansion (new_width old_width coords)
+;; nickname: "horizontal"
+(defun rectpara-deal-with-horizontal-expansion (new-width old-width coords)
   "Juggle things out of the way horizontally so expanded rectpara will fit."
   (let* (
           (left  (nth 0 coords))
@@ -931,78 +884,94 @@ you can get mysterious args out of range errors and the like."
           (right (nth 2 coords))
           (bot   (nth 3 coords))
 
+          (delta (- new-width old-width ))
+          (new-right (+ right delta))
+
           (padding 3)
-          (horizontal_delta (+ (- new_width old_width ) padding ))
+          (horizon (+ delta padding))
 
-          trunk_room
-          blank_cols_needed
-          temp_hidden_rectparas
-        )
+            open-field overlap shift
+            temp_hidden_rectparas           )
 
-;;; TODO THE ETERNALLY NOW AUGUST
+    ;; clear the global stash
+    (setq rectpara-stash-plist () )
 
-    (message "WARNING: gotten fatter: changed to %d from %d" new_width old_width) ;; DEBUG STUB
+    ;; (rectpara-move-column top) ;; just being neat.
+    (rectpara-move-column right)
 
-    (rectpara-move-row right)
-    (setq trunk_room
-          (rectpara-open-how-far-over horizontal_delta top bot))
+    (setq open-field
+          (rectpara-open-how-far-over right horizon top bot))
 
-    ;; difference in trunk_room and expansion is how much we need to open
-    (setq blank_cols_needed
-          (- horizontal_delta trunk_room))
+    ;; difference in open-field and expansion is how much we need to open
+    (setq overlap (- new-right (+ open-field right)))
+    (setq shift (+ overlap padding))
 
-    ;; Stores extracted rectparas in global var: rectpara-stash-plist
-    (rectpara-extract-rectpars-to-right-of-current top bot) ;; TODO use blank_cols_needed as horizon
+    (cond ( (> shift 0 )  ;; don't try to do anything unless something needs to be done
 
-    ;; Pulls rectparas back in from the global rectpara-stash-plist
-    (rectpara-restore-rectparas-but-moved-over  blank_cols_needed )
-  ))
+           ;; Stores extracted rectparas in global var: rectpara-stash-plist
+           (rectpara-extract-rectpars-to-right coords horizon)
 
-;; STATUS: Working
-(defun rectpara-open-how-far-over (checkdistance top bot)
-  "Looks rightward to see how far until the end of open space.
-From the current column, scans over through the given CHECKDISTANCE,
-verifying that there is whitespace between the TOP and BOT
-boundaries, and returning the column where it ends.
-Note: the maximum return value is the checkdistance."
-  (let ( (saveloc (point))
-         (i 0)
-         (limit checkdistance) )
-    (catch 'UP
-      (while (< i checkdistance)
-        (let ( (line
-                (rectpara-get-column-as-string top bot))
-               )
-          (if (not (string-match "^[ ]*$" line))
-              (throw 'UP (setq limit i)))
-          (picture-forward-column 1)
-          (setq i (1+ i))
+           ;; Pulls rectparas back in from the global rectpara-stash-plist
+           (rectpara-restore-rectparas-shifted-over  shift )
+           )
           )))
-    (goto-char saveloc)
-    limit))
 
-(defun rectpara-get-column-as-string (top bot) ;; &optional column-number
-  "Gets the segment of the current column in the range from TOP to BOTTOM.
-Returns the characters as a string.  Pads with spaces if need be."
-  (interactive)
-  (let ( (saveloc (point) )
-         (colstr  "")
+(defun rectpara-open-how-far-over (col horizon top bot)
+  "Find amount of open space next to column COL, between rows TOP and BOT.
+Looks no further than the HORIZON (a limited number of columns).
+Note: the maximum return value is the horizon." ;; horizon includes padding
+  (save-excursion
+    (let* (
+            (i 0)   ;; loop indicie: a horizontal count from the column COL
+            (absolute-horizon (+ col horizon) )
+
+            ;; looking for the "open-field": the end of the open columns
+            (open-field absolute-horizon) ;; initialized to it's max value
+            (row-candidate 0)             ;; candidate from each row
+
+            (farther 1)   ;; need to look up and down a little farther to keep from encroaching on stuff
+            (top (- top farther))
+            (bot (+ bot farther))
+           )
+
+      ;; loop vertically from top to bottom, looking to the right of curcol
+      (rectpara-move-row top)
+
+      (while (<= (rectpara-current-row) bot )
+        (setq i 0)
+
+        ;; move (back) to original column to check from
+        (rectpara-move-column col)
+
+        ;; on each line, crawl forward looking for non-space
+        (catch 'OUT
+          (while (< (rectpara-current-column) absolute-horizon )
+            (cond ( (not (looking-at " "))  ;; maybe better: "[ \t]"
+                    (throw 'OUT nil) ) )
+
+            ;; two steps forward and one back (to autovivify spaces in empty space)
+            (picture-forward-column  2)
+            (picture-backward-column 1)
+            (setq i (1+ i))
+            ))
+        (setq row-candidate i)
+
+        ;; if candidate is less than known limit, bring down the limit to further
+        (if (< row-candidate open-field)
+            (setq open-field row-candidate))
+
+        (picture-move-down 1)
         )
-    (rectpara-move-row top)
-    (while (<= (rectpara-current-row) bot )
-      (let* ( (c (buffer-substring (point) (1+ (point) )))) ;; write a rectpara-char-at-point-as-string?
-          (setq colstr (concat colstr c)))
-        (picture-move-down 1))
-    (goto-char saveloc)
-    colstr))
+      ;; (message "open-field: %d" open-field) ;; DEBUG
+    open-field)))
 
-
-;; TODO BOOKMARKS IN AUGUST DRIFTING LIKE SNOW
-(defun rectpara-extract-rectpars-to-right-of-current ( coords )
+(defun rectpara-extract-rectpars-to-right ( coords  horizon )
   "Look to the right of the area given by COORDS, extract rectparas, return as list.
-Does a cascading check for what is to the right, calling this
-routine recursively on each rectpara.
-A rectpara is represented as a set of coords and a list of lines of text ((? TODO))."
+Does a cascading check for what is to the right, looking as far as HORIZON.
+Works by calling this routine recursively on each rectpara.
+A rectpara is represented as coords, i.e. a list of four x/y parameters,
+and a rectangle, i.e. a list of lines of text.
+TODO CHECK."
   (save-excursion
     (let* (
            (saveloc (point) )
@@ -1011,32 +980,24 @@ A rectpara is represented as a set of coords and a list of lines of text ((? TOD
            (right (nth 2 coords))
            (bot   (nth 3 coords))
 
-           ;; TODO FOR REAL
-           ;; what if the horizon is a number passed-in as an argument?
-           ;; if you know how much you need to move over, why not ignore rectparas beyond checkdist?
+           (absolute-horizon (+ right horizon ))
 
-           ;; DEBUG need to push out the horizon when going live
-           ;;         (horizon 1000) ;; look out no farther than this.
-           ;;         (horizon 300) ;; look out no farther than this.
-           ;;         (horizon 100) ;; look out no farther than this.
-           ;;         (horizon 40) ;; look out no farther than this.
-           (horizon 70) ;; look out no farther than this.
+           (farther 1) ;; need to peek up and down a little farther to get everything.
 
-           rectpara-contents
-
+           rectpara-contents  found-coords
            )
       ;; loop vertically from top to bottom, looking to the right of the rectpara
-      (rectpara-move-row top)
+      (rectpara-move-row (- top farther))
+      (while (<= (rectpara-current-row) (+ bot farther) )
 
-      (let ( (found-coords () ) )
-        (while (<= (rectpara-current-row) bot )
+          (setq found-coords () )
 
           ;; move to the column just outside the given rectpara coords
           (rectpara-move-column (1+ right))
 
           ;; on each line, crawl forward looking for non-space
           (catch 'OUT
-            (while (<= (rectpara-current-column) horizon )
+            (while (<= (rectpara-current-column) absolute-horizon )
               (cond ( (not (looking-at " "))  ;; maybe better: "[ \t]"
                       (setq found-coords (rectpara-find-rectpara-boundaries))
                       (throw 'OUT nil) ) )
@@ -1047,65 +1008,65 @@ A rectpara is represented as a set of coords and a list of lines of text ((? TOD
 
           ;; using global plist stash to accumulate a unique list of rectparas
           (cond ( found-coords
-                  (let* ( (coords-str (mapconcat 'number-to-string found-coords "-") )
-                          )
-
-                    ;; TODO when going live, may want to change this "copy" to "extract"
-                    (setq rectpara-contents (rectpara-copy-rectpara-at-coords found-coords) )
+                  (let* ( (coords-str (mapconcat 'number-to-string found-coords "-") ) )
+                    (setq rectpara-contents (rectpara-extract-rectpara-at-coords found-coords) )
 
                     (setq rectpara-stash-plist
                           (plist-put rectpara-stash-plist (intern coords-str) rectpara-contents))
 
                     ;; recursive call to keep looking out rightwards of the found rectpara
-                    (rectpara-extract-rectpars-to-right found-coords)
-
+                    (rectpara-extract-rectpars-to-right found-coords horizon)
                     )))
           (picture-move-down 1)
-          )))
+          ))
     rectpara-stash-plist ))
 
-(defun rectpara-modetrial-runnerist ()   ;; DEBUG
-  "Does trial runs of rectpara-extract-rectpars-to-right."
+(defun rectpara-restore-rectparas-shifted-over ( &optional rightshift plist )
+  "Inserts rectparas from PLIST into current buffer, moved over RIGHTSHIFT chars.
+PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
   (interactive)
-  (let* ( ( coords (rectpara-find-rectpara-boundaries) ) )
-    ;; clear the global stash
-    (setq rectpara-stash-plist () )
-    (rectpara-extract-rectpars-to-right coords) ;; currently just copies, someday, extract...
-    (rectpara-dump-stash)
-    ))
 
+  (catch 'OUT  ;; skip everything
+    (unless rightshift (setq rightshift 0))
+    (unless plist
+      ;;    (setq plist rectpara-stash-plist)
 
-(defun rectpara-restore-stash-BASE-MUTATION ( &optional plist )
-  "Inserts rectparas from stash (default rectpara-stash-plist) into current buffer."
-  (interactive)
-  (unless plist (setq plist rectpara-stash-plist))
-    (let* ( ( keysters (rectpara-plist-keys plist) )
-            ( effected (rectpara-get-effected-range-plist plist) )
-            ;; (min-x  (nth 0 effected))
-            ;; (min-y  (nth 1 effected))
-            (max-x  (nth 2 effected))
-            (max-y  (nth 3 effected))
-          )
+      (setq plist
+            (cond (rectpara-stash-plist
+                   rectpara-stash-plist
+                   )
+                  (t ;; if there's no plist, can't do anything
+                   (throw 'OUT nil)
+                   ) ) )
 
-      ;; move through x y range, filling with spaces
-      ;; (starting from origin, just to be sure.)
-      (rectpara-move-to-x-y-location 1 1)
-      (rectpara-move-to-x-y-location max-x max-y)
+      (let* ( ( keysters (rectpara-plist-keys plist) )
+              ( effected (rectpara-get-effected-range-from-plist plist) )
+              ;; (min-x  (nth 0 effected))
+              ;; (min-y  (nth 1 effected))
+              (max-x  (+ (nth 2 effected) rightshift))
+              (max-y  (nth 3 effected))
+              )
 
-      (dolist (key keysters )
-        (message ">>>%s<<<" (pp key))
-        (let* (
-                (coords (mapcar 'string-to-number (split-string key "-")))
-                (left  (nth 0 coords))
-                (top   (nth 1 coords))
-                (right (nth 2 coords))
-                (bot   (nth 3 coords))
-                )
-          (rectpara-move-to-x-y-location-lite left top)
-          (let ( ( contents (rectpara-stash-plist key plist) )
+        ;; move through effected x y range, ensuring whitespace is filled with spaces
+        ;; (starting from origin, just to be sure.)
+        (rectpara-move-to-x-y-location 1 1)
+        (rectpara-move-to-x-y-location max-x max-y)
+
+        (dolist (key keysters )
+          (let* (
+                 (coords (mapcar 'string-to-number (split-string key "-")))
+                 (left  (nth 0 coords))
+                 (top   (nth 1 coords))
+                 (right (nth 2 coords))
+                 (bot   (nth 3 coords))
+
+                 (newleft (+ left rightshift))
                  )
-            (picture-insert-rectangle contents)
-          )))))
+            (rectpara-move-to-x-y-location-lite newleft top)
+            (let ( ( contents (rectpara-stash-lookup key plist) )
+                   )
+              (picture-insert-rectangle contents)
+          )))))))
 
 
 (defun rectpara-restore-stash ( &optional plist )
@@ -1113,7 +1074,7 @@ A rectpara is represented as a set of coords and a list of lines of text ((? TOD
   (interactive)
   (unless plist (setq plist rectpara-stash-plist))
     (let* ( ( keysters (rectpara-plist-keys plist) )
-            ( effected (rectpara-get-effected-range-plist plist) )
+            ( effected (rectpara-get-effected-range-from-plist plist) )
             ;; (min-x  (nth 0 effected))
             ;; (min-y  (nth 1 effected))
             (max-x  (nth 2 effected))
@@ -1135,57 +1096,17 @@ A rectpara is represented as a set of coords and a list of lines of text ((? TOD
                 (bot   (nth 3 coords))
                 )
           (rectpara-move-to-x-y-location-lite left top)
-          (let ( ( contents (rectpara-stash-plist key plist) )
+          (let ( ( contents (rectpara-stash-lookup key plist) )
                  )
             (picture-insert-rectangle contents)
           )))))
-
-(defun rectpara-dump-stash ( &optional plist ) ;; DEBUG
-  "Dumps a stash (default rectpara-stash-plist) to *Messages*."
-  (interactive)
-  (unless plist (setq plist rectpara-stash-plist))
-    (let ( ( keysters (rectpara-plist-keys rectpara-stash-plist) )
-           )
-      (dolist (key keysters )
-        (message "VVV")
-        (message "%s" key)
-        (message "^^^")
-        (let ( ( contents (lax-plist-get rectpara-stash-plist key) )
-               )
-          (dolist (line  contents )
-            (message "%s" line)
-            )
-          (message "---")
-          )
-        )))
-
-(defun rectpara-insert-stash ( &optional plist ) ;; DEBUG
-  "Inserts a stash report (default rectpara-stash-plist) in current-buffer."
-  (interactive)
-  (unless plist (setq plist rectpara-stash-plist))
-    (let ( ( keysters (rectpara-plist-keys rectpara-stash-plist) )
-           )
-      (dolist (key keysters )
-        (insert " o ")
-        (insert (format "%s" key))
-            (newline)
-        (let ( ( contents (lax-plist-get rectpara-stash-plist (intern key)) )
-               )
-          (dolist (line  contents )
-            (insert (format "\t%s" line))
-            (newline)
-            )
-          (insert "---")
-          (newline)
-          )
-        )))
 
 (defun rectpara-restore-stash ( &optional plist )
   "Inserts rectparas from stash (default rectpara-stash-plist) into current buffer."
   (interactive)
   (unless plist (setq plist rectpara-stash-plist))
     (let* ( ( keysters (rectpara-plist-keys plist) )
-            ( effected (rectpara-get-effected-range-plist plist) )
+            ( effected (rectpara-get-effected-range-from-plist plist) )
             ;; (min-x  (nth 0 effected))
             ;; (min-y  (nth 1 effected))
             (max-x  (nth 2 effected))
@@ -1207,7 +1128,7 @@ A rectpara is represented as a set of coords and a list of lines of text ((? TOD
                 (bot   (nth 3 coords))
                 )
           (rectpara-move-to-x-y-location-lite left top)
-          (let ( ( contents (rectpara-stash-plist key plist) )
+          (let ( ( contents (rectpara-stash-lookup key plist) )
                  )
             (picture-insert-rectangle contents)
           )))))
@@ -1227,14 +1148,10 @@ Defaults to rectpara-stash-plist."
   (setq plist
         (plist-put plist (intern keystr) value)))
 
-;; DEBUG
-;; (rectpara-get-effected-range-plist)
-
-;; STATUS: works.
-(defun rectpara-get-effected-range-plist ( &optional plist )
+(defun rectpara-get-effected-range-from-plist ( &optional plist )
   "Gets max x and y values out of a plist stash of rectparas.
 Defaults to global rectpara-stash-plist."
-  (interactive)
+  ;; (interactive)
   (unless plist (setq plist rectpara-stash-plist))
   (let* ( (keysters (rectpara-plist-keys plist) )
           ;; use any one of the rectparas to initialize values
@@ -1253,32 +1170,19 @@ Defaults to global rectpara-stash-plist."
                 (right (nth 2 coords))
                 (bot   (nth 3 coords))
                 )
-
-          (if (< left min-x)
-              (setq min-x left))
-          (if (< top min-y)
-              (setq min-y top))
-
-          (if (> right max-x)
-              (setq max-x right))
-          (if (> bot max-y)
-              (setq max-y bot))
-          )
-        )
+          (if (< left min-x)  (setq min-x left))
+          (if (< top min-y)   (setq min-y top))
+          (if (> right max-x) (setq max-x right))
+          (if (> bot max-y)   (setq max-y bot))
+          ))
       (list min-x min-y max-x max-y)
       ))
 
-
-
-;; DEBUG
-;; (rectpara-plist-keys doom-stash-plist)
-;; (rectpara-plist-values doom-stash-plist)
-
 ;; Did I really need to write this?  Why am I using a language that's
-;; making me do obvious things like this?
+;; making me do things like this?
 (defun rectpara-plist-keys ( plist )
   "Return all keys of the given plist as a list of strings.
-Essentially this steps through any list and skips every other value."
+This just steps through a list and skips every other value."
   (let ( (flip t)
          (accumulator) )
     (dolist (item plist)
@@ -1294,7 +1198,7 @@ Essentially this steps through any list and skips every other value."
 
 (defun rectpara-plist-values ( plist )
   "Return all values of the given plist as a list.
-Essentially this steps through any list and skips every other value."
+This just steps through a list and skips every other value."
   (let ( (flip nil)
          (accumulator ()) )
     (dolist (item plist accumulator)
@@ -1304,9 +1208,6 @@ Essentially this steps through any list and skips every other value."
           (setq flip nil)
         (setq flip t))
       )))
-
-
-
 
 (defun rectpara-edit-mode-buffer-metadata-from-name ()
   "Interprets the current edit_buffer name, extracting target
@@ -1345,39 +1246,40 @@ Note: the edit buffer is expected to have a name like:
     (set-buffer rectpara-buffer)
     ))
 
-
-;; TODO AUGUST
-;; TODO SOON these two routines are extracted from code below
-;;            re-factor the following to use them, to keep things DRY.
-(defun rectpara-copy-rectpara-at-coords (coords)
-  "Given COORDS returns a copy of rectpara as list of strings."
-    (setq start-end (rectpara-convert-coords-to-start-end coords))
-    (setq start (car start-end))
-    (setq end (nth 1 start-end))
-    (setq rectpara (extract-rectangle start end))
-    ;; (setq rectpara (extract-rectangle start end)) ;; Cargo-culting repetition that was *probably* an error.
-    rectpara )
+(defun rectpara-clear-rectangle (coords)
+  "Clear the rectangle with the given COORDS."
+    (let* ( (start-end (rectpara-convert-coords-to-start-end coords))
+            (start (car start-end))
+            (end   (nth 1 start-end)) )
+      (clear-rectangle start end)
+      ))
 
 (defun rectpara-extract-rectpara-at-coords (coords)
   "Given COORDS returns a copy of rectpara as list of strings."
     (setq start-end (rectpara-convert-coords-to-start-end coords))
     (setq start (car start-end))
     (setq end (nth 1 start-end))
+    (setq rectpara (extract-rectangle start end))  ;; though extract implies removal this doesn't...
+    (clear-rectangle start end)                    ;; we have to do the removal ourselves.
+    rectpara )
+
+(defun rectpara-copy-rectpara-at-coords (coords)
+  "Given COORDS returns a copy of rectpara as rectangle, i.e. list of strings."
+    (setq start-end (rectpara-convert-coords-to-start-end coords))
+    (setq start (car start-end))
+    (setq end (nth 1 start-end))
     (setq rectpara (extract-rectangle start end))
-    ;; (setq rectpara (extract-rectangle start end)) ;; Cargo-culting repetition that was *probably* an error.
-    (clear-rectangle start end)  ;;; extract implies removal
+    ;; (clear-rectangle start end)  ;;; the sole difference between copy and extract
     rectpara )
 
 
+;; unused
 (defun rectpara-copy-rectpara-with-coords ()
   "Returns current rectpara along with a list of x-y coordinates"
   (let (coords start-end start end rectpara)
     (setq coords (rectpara-find-rectpara-boundaries))
-
-    (setq start-end (rectpara-convert-coords-to-start-end coords))
-    (setq start (car start-end))
-    (setq end (nth 1 start-end))
-    (setq rectpara (extract-rectangle start end)) ; note this "extract" doesn't remove
+    (setq rectpara
+          (rectpara-copy-rectpara-at-coords coords))
     (list rectpara coords)))
 
 (defun rectpara-extract-rectpara-with-coords ()
@@ -1385,12 +1287,15 @@ Note: the edit buffer is expected to have a name like:
   (let (saveloc coords start-end start end rectpara)
     (setq coords (rectpara-find-rectpara-boundaries))
 
-    (setq start-end (rectpara-convert-coords-to-start-end coords))
-    (setq start (car start-end))
-    (setq end (nth 1 start-end))
-    (setq rectpara (extract-rectangle start end))
-    (setq rectpara (extract-rectangle start end))
-    (clear-rectangle start end)  ;;; extract implies removal
+;;     (setq start-end (rectpara-convert-coords-to-start-end coords))
+;;     (setq start (car start-end))
+;;     (setq end (nth 1 start-end))
+;;     (setq rectpara (extract-rectangle start end))
+;;     (setq rectpara (extract-rectangle start end))
+;;     (clear-rectangle start end)  ;;; extract implies removal
+
+    (setq rectpara
+          (rectpara-extract-rectpara-at-coords coords))
     (list rectpara coords)))
 
 (defun rectpara-extract-rectpara-with-coords-and-rel-pos ()
@@ -1402,12 +1307,16 @@ Note: the edit buffer is expected to have a name like:
 
     (setq coords (rectpara-find-rectpara-boundaries))
 
-    (setq start-end (rectpara-convert-coords-to-start-end coords))
-    (setq start (car start-end))
-    (setq end (nth 1 start-end))
-    (setq rectpara (extract-rectangle start end))
-    (setq rectpara (extract-rectangle start end))
-    (clear-rectangle start end)  ;;; extract implies removal
+;;     (setq start-end (rectpara-convert-coords-to-start-end coords))
+;;     (setq start (car start-end))
+;;     (setq end (nth 1 start-end))
+;;     (setq rectpara (extract-rectangle start end))
+;;     (setq rectpara (extract-rectangle start end))
+;;     (clear-rectangle start end)  ;;; extract implies removal
+
+    (setq rectpara
+          (rectpara-extract-rectpara-at-coords coords))
+
     (list rectpara coords pos-pair)))
 
 ;;;
@@ -1464,21 +1373,16 @@ The first line is row 1.  Note, could also use: \\[picture-current-line]."
    (save-excursion
    (let (coords_list coords)
      (picture-beginning-of-line)
-
      (while (not (eolp))
        (if (looking-at "[^ ]")
            ((lambda ()
               (setq coords (rectpara-find-rectpara-boundaries))
               (rectpara-move-column (1+ (nth 2 coords)))
-
 ;;              (setq coords_list (cons coords coords_list)) ; pushing onto the front
               (setq coords_list (append coords_list (list coords))) ; shifting on to the end
-
               ))
          (picture-forward-column 1)))
-
      coords_list)))
-
 
 (defun rectpara-report-coords-of-rectparas-on-line ()
   "Find the coordinates of all rectparas on the current line, and spit out messages about them."
@@ -1495,18 +1399,16 @@ The first line is row 1.  Note, could also use: \\[picture-current-line]."
        (setq coords_list (cdr coords_list))))))
 
 
-;; rectpara-extract-rectpars-with-coords-on-line --
-;
+;; Just used by:
+;;   rectpara-extract-rectpars-with-coords-on-line
+;;   rectpara-report-of-rectparas-and-coords-on-line
+(defun rectpara-extract-rectpars-with-coords-on-line ()
+   "Looks for all rectparas intersecting the current line and
+removes them, returns them with their coordinates"
 ;; scans horizontally across the row one below the bottom edge of original
 ;; rectpara.  when non-blank, runs
 ;;   rectpara-extract-rectpara-with-coords
 ;; (a way of moving rectparas out of the way temporarily)
-
-;;; Add optional parameter to specify the line to look at?
-
-(defun rectpara-extract-rectpars-with-coords-on-line ()
-   "Looks for all rectparas intersecting the current line and
-removes them, returns them with their coordinates"
    (let (result_list coords rectpara-with-coords next_col)
      (save-excursion
        (picture-beginning-of-line)
@@ -1519,18 +1421,11 @@ removes them, returns them with their coordinates"
                 (rectpara-move-column next_col)
 
                 (setq result_list (append result_list (list rectpara-with-coords)))
-                                        ; shifting on to the end of the list
+                                      ;; shifting on to the end of the list
                 ))
            (picture-forward-column 1)))
 
        result_list)))
-
-;; Returns a list of elements which are in turn each a list
-;; of two items, which are in turn also lists: one them
-;; is a rectpara/rectangle (i.e. a list of strings), and the
-;; other is a list of 4 items (the coords of the
-;; rectpara)....
-
 
 (defun rectpara-report-of-rectparas-and-coords-on-line ()
   "Report the extracted rectparas with coordinates which were all found on the current line"
@@ -1539,17 +1434,13 @@ removes them, returns them with their coordinates"
          coords rectpara)
      (while big_list
        (setq coords (car (cdr (car big_list))))
-
        (message "x1: %d y1: %d x2: %d y2: %d"
                 (nth 0 coords)
                 (nth 1 coords)
                 (nth 2 coords)
                 (nth 3 coords))
-
        (setq rectpara (car (car big_list)))
-
-       (message "First line of rectpara: %s" (nth 0 rectpara))
-
+       ;; (message "First line of rectpara: %s" (nth 0 rectpara))
        (setq big_list (cdr big_list)))))
 
 
@@ -1586,14 +1477,14 @@ removes them, returns them with their coordinates"
          (setq big_list (cdr big_list))))))
 
 
+;; TODO an oddly big routine for a very small purpose.
+;;      is all this stuff really needed?
 (defun rectpara-get-line-segment-as-string (left right &optional line-number)
   "Gets the requested piece of a line as a string.  Default: current line.
 Returns the substring between LEFT and RIGHT.  When the string is
-too short will pad with spaces (this assists in faking an infinite quarter-plane."
-  (interactive)
-
+too short will pad with spaces-- this assists in faking an infinite quarter-plane."
   (let ( (saveloc (point) )
-        line-start line-end line segment )
+         line-start line-end line segment )
 
     (if line-number
         (goto-line line-number))
@@ -1603,7 +1494,6 @@ too short will pad with spaces (this assists in faking an infinite quarter-plane
     (setq line-start (point))
     (picture-end-of-line)
     (setq line-end (point))
-
     (setq line
           (buffer-substring line-start line-end))
 
@@ -1621,10 +1511,8 @@ too short will pad with spaces (this assists in faking an infinite quarter-plane
           (substring line left right))
 
     (goto-char saveloc)
-    ;; (message "123  ret: >>%s<<" segment) ;; DEBUG
     segment))
 
-;; Formerly: rectpara-look-down-how-far-to-end-of-whitespace
 (defun rectpara-open-how-far-down (checkdistance left right)
   "Looks downward to see how far until the end of open space.
 From the current row, scans down through the given CHECKDISTANCE,
@@ -1655,47 +1543,25 @@ down past it."
     (goto-char saveloc)
     limit))
 
+
 ;;; ======
 ;;; TODO
 
 ;;; o  litters emacs with open rectpara edit buffers.
 ;;;    When more confident in this code, could delete old buffer
 ;;;    upon return-from.
+;;;     o  obviously, make this a defvar setting.
 
 ;;; o  Anyway: the edit buffers should be saved to file locations
 ;;;    in /tmp so it doesn't keep beeping at you when you do C-x C-s
 ;;;    out of habit.
 
+;;; o  Feature: would like a "skip to next rectpara" command.
+;;;    Look for nearest rectpara downward and to the right
+;;;    when there's more than one... do something reasonable.
+;;;     o  Just go to the first one (leftmost).
+;;;     o  Provide a second command to cycle through choices
 
-;;; o  implement a "skip to next rectpara" command
-;;;    look for nearest rectpara downward and to the right
-;;;    when there's more than one, go to the "first"
-;;;    one (leftmost?).  Provide a different command to
-;;;    cycle through the possible choices from the last "next".
-
-
-
-;;; BUGS
-
-;;; o  After edit, rightward expansion can overwrite things.
-
-
-;;; o  editing rectparas one char wide eats a column of
-;;;    spaces to it's right upon a return-from-edit.  This is
-;;;    repeatable.  (Think it stems from picture-mode bug).
-
-
-;;; TODO some ideas for better ways of determining the right boundary
-;;;      (as in rectpara-find-right-boundary)
-
-;;; Possibly: do some sort of discard of "bad" lengths?
-;;; (if a line looks much shorter than others, look past the
-;;; "two-space" gap you thought was the end).
-
-;;; Maybe, just peek up or down at adjacent lines
-;;; on ambiguous cases? (like two-space after full-stop)
-;;; (Same thing as clever lengths processing, but maybe
-;;; easier to envision as a crawling around process).
 
 ;;=======
 
