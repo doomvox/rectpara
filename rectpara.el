@@ -1,5 +1,5 @@
 ;; rectpara.el         Fri  December 20, 2002  22:10
-;;               Rev:  Sun  August   14, 2016  19:17
+;;               Rev:  Sat  August   27, 2016  10:20
 
 ;; rectpara-mode is a variant of picture-mode to work on blocks of text layed-out
 ;; roughly as rectangles. I call these "rectparas" for "rectangular paragraphs".
@@ -26,15 +26,19 @@
 ;;      from picture-mode
 
 
-;; rectpara.el was originally called doomfile.el, because it's
-;; original purpose was to work on "The Doomfiles",
-;; currently at http://obsidianrook.com/doomfiles.
+;; The rectpara-edit-rectpara command extracts one of those rectparas
+;; and temporarily moves it to a separate window in rectpara-edit-mode
+;; (which is derived from text-mode).
 
 
+;; An early name for rectpara.el was doomfile.el, because it's
+;; original purpose was to work on "The Doomfiles", currently at
+;; http://obsidianrook.com/doomfiles.
 
 ;; Installation:
-;;  Put this file into a location in your load-path, and add the following to your ~/.emacs:
-;;  (require 'rectpara-mode)
+;;  Put this file into a location in your load-path, and add the
+;;  following to your ~/.emacs:
+;;    (require 'rectpara-mode)
 
 ;; Example use:
 ;;  In a file containing text like the above rectpara example:
@@ -42,7 +46,7 @@
 ;;  cursor to a rectpara, e.g. "I've always..."
 ;;  M-o e
 ;;    You should see that rectpara extracted to a new window
-;;    where it can be edited as standalone text. When done:
+;;    where it can be edited as stand-alone text. When done:
 ;;  C-C C-c
 ;;  That should move the edited rectpara back to the original position.
 ;;
@@ -54,7 +58,9 @@
 (require 'picture)
 
 
-;; Having a global makes it a little easier to write recursive routines that accumulate rectparas
+;; Having a global makes it a little easier to write recursive
+;; routines that accumulate rectparas (but it's not required, so
+;; get rid of it: TODO).
 (defvar rectpara-stash-plist ()
   "Global to stash a unique list of rectparas.")
 (make-variable-buffer-local 'rectpara-stash-plist)
@@ -66,11 +72,23 @@ The editing commands are the same as in Picture mode, with
 some additional commands to select or edit a rectpara:
 \(\\[rectpara-select-rectpara], \\[rectpara-edit-rectpara]\).
 \\{rectpara-mode-map}"
-  (setq case-fold-search nil)
-  (if (auto-fill-mode)
-    (auto-fill-mode)))
+  (turn-off-auto-fill)
+  (setq-default indent-tabs-mode nil)
+  (setq case-fold-search nil)  )
+
+
+(defun turn-off-auto-fill ()
+  "Unconditionally turn off Auto Fill mode."
+  (auto-fill-mode -1))
+
+;;;; TODO I once worked out techniques to be more flexible about
+;;;;      doing keymap setups... where did I do that stuff?
 
 ;;; Grabbing Alt o as the doOomfile-mode prefix
+
+;; Note, I do this in my .emacs
+;;   (global-unset-key "\M-o")   ;; I want this, facemenu.el can't have it
+
 (define-key rectpara-mode-map "\M-oe" 'rectpara-edit-rectpara)
 (define-key rectpara-mode-map "\M-oc" 'rectpara-compose-rectpara)
 
@@ -81,37 +99,19 @@ some additional commands to select or edit a rectpara:
 
 (define-derived-mode rectpara-edit-mode
   text-mode "Rectpara Edit"
-  "Major mode for editing an individual rectparas.
+  "Major mode for editing individual rectparas.
 Similar to text-mode, but with an additional command to
 finish and return the rectpara to the original buffer.
 \\[rectpara-edit-mode-done].
 \\{rectpara-edit-mode-map}"
-  (turn-on-auto-fill))
+  (turn-on-auto-fill)
+  (setq-default indent-tabs-mode nil) )
 
 (define-key rectpara-edit-mode-map "\C-x#"    'rectpara-edit-mode-done)
 (define-key rectpara-edit-mode-map "\C-c\C-c" 'rectpara-edit-mode-done)
 
 
-;; The following is cloned from picture-mode-exit.
-;; (Can't just use the original, because it checks
-;; the mode to make sure it's in picture).
-
-(defun rectpara-exit (&optional nostrip)
-  "Undo rectpara-mode and return to previous major mode.
-With no argument strips whitespace from end of every line in Picture buffer
-  otherwise just return to previous mode."
-  (interactive "P")
-  (if (not (eq major-mode 'rectpara-mode))
-      (error "You aren't in rectpara-mode.")
-    (if (not nostrip) (picture-clean))
-    (setq mode-name picture-mode-old-mode-name)
-    (use-local-map picture-mode-old-local-map)
-    (setq major-mode picture-mode-old-major-mode)
-    (kill-local-variable 'tab-stop-list)
-    (setq truncate-lines picture-mode-old-truncate-lines)
-    (force-mode-line-update)))
-
-
+;;; ========
 ;;; EDITING RECTPARAS
 
 ;;; Commands are provided to:
@@ -123,6 +123,10 @@ With no argument strips whitespace from end of every line in Picture buffer
 
 ;;;   o returning from the edit buffer, if the rectpara has become
 ;;;     bigger, it automatically tries to open up space for it.
+
+;;--------
+;; coordinate system
+
 
 ;; These routines work with rows and columns numbering from 1
 ;; Note: picture-current-line also numbers from 1, though
@@ -147,78 +151,70 @@ With no argument strips whitespace from end of every line in Picture buffer
 ;;    =
 ;;   rows
 
+;; The boundaries of a rectpara are determined roughly by
+;; a line of spaces above and below and two columns of
+;; spaces to the left and right.
 
-;; The general approach in this code is to "crawl around" in
-;; the plane, moving the cursor until you find what you're
-;; looking for.
+;; A common approach in this code is to "crawl around" in the
+;; plane, moving the cursor until you find what you're looking for.
+;; So, more precisely, the boundaries are found like so:
 
-;; The boundaries of a rectpara are determined as follows:
-;
 ;;   Presume cursor is inside the rectpara of interest.
-;;   Crawl leftward, looking for two adjacent cols of space, three spaces high
+;;   Crawl leftward, looking for two adjacent cols of spaces, three rows high
 ;;   Crawl down the left edge, until a row with three spaces is found.
 ;;   Crawl up the left edge, until a row with three spaces is found.
 ;;   Find the longest line where, line ends are defined by this regexp:
 ;;      "[^.?!:]  \\|[.?!:]   " ; match 2 spaces or 3 after hard-stop
 
 
-;;; Documenting some of the nitty gritty of how the code works:
+;;--------
+;; autovivifying spaces
 
 ;; picture-mode (and hence rectpara-mode) uses the "quarter-plane"
 ;; model, which is to say it fakes an infinite field of empty space
 ;; and quietly fills in actual spaces as you go moving around in it.
-;; But this is just an illusion, and really the whitespace
-;; can be made up of tabs, newlines or actual spaces.
 
-;; For the present I don't worry about tabs, since I've got my .emacs
-;; tricked out like so:
+;; For rectpara-mode and rectpara-edit-mode, I ensure that spaces are
+;; used for whitespace by setting indent-tabs-mode to nil.
 
-;;  ; force emacs to always use spaces for tabbing
-;;  (setq-default indent-tabs-mode nil)
+;; There are often issues with getting the end-of-line and end-of-buffer
+;; to behave like an indefinite expanse of spaces: in this code
+;; I frequently resort to a hack where I twiddle the cursor
+;; location forward and back with picture-* commmands, so if need
+;; be they'll will fill in real spaces, which then makes it
+;; possible to work with simple matches for spaces such as (looking-at " ")
 
-;; But there's still the spaces vs. newline distinction to worry about
-;; and I've had trouble getting general white space detection to work
-;; reliably either via my own regexps, or using (thing-at-point 'whitespace)
+;; And there's a class of rectpara-move-* commands that now laboriously
+;; step around one space or column at a time so that the underlying
+;; picture-mode commands can autovivify spaces.
 
-;; My complaint about using thing-at-point: It doesn't look solely to the
-;; right of point.  If you're at the first character of a word,
-;; thing-at-point calls that "whitespace", because there's a space off
-;; to the left.
+;;--------
+;; Data structures:
 
-;; So, for the moment there's a kludge that I use repeatedly
-;; in the following code: I twiddle the cursor location
-;; forward and back with picture-* commmands, so if need be
-;; they'll will fill in real spaces in the quarter-plane of virtual spaces.
-;; then I can do simple matches for spaces
-;;   (looking-at "   ")
+;;  I specify a rectangle using four coordinates (x1, y1, x2, y2)
+;;  which locate the upper-left and lower-right corners using
+;;  a pair of column and row numbers.
 
-;; Note that picture.el itself often uses character classes like this:
-;;    (if (looking-at "[ \t]*$")
-;; which is presumably the kind of thing I should be doing.
-
-
-;;; Data structures:
-
-;;  I specify a rectangle using four coordinates (x1, y1, x2, y2).
-;;  The emacs style of region "start and end" is less robust
-;;  (adding whitespace can change the values without a change to
-;;  visible layout).
+;;  The standard emacs style of specifying a rectangular region
+;;  using two values for point (the start and the end) is less
+;;  robust, because adding additional spaces in the whitespace
+;;  (say, at the end of lines) can change the values without a
+;;  change to visible layout.
 
 ;;  A "rectpara" is just a "rectangle" which is a list of strings.
 
 ;;  A list of rectparas is a list of lists, with both the rectpara
 ;;  and the coords.
 
-;; A pecularity of specifying rectangles (and hence rectparas):
-;; You specify two points, the upper-left and lower-right,
-;; where the top, bottom and left edges are included in the
-;; rectangle, *but the right edge is excluded*.
+;; A pecularity of specifying rectangles (and hence
+;; rectparas): You specify two points, the upper-left and
+;; lower-right, where the top, bottom and left edges are
+;; included in the rectangle, *but the right edge is
+;; excluded*.  There's no clean way of thinking about this...
+;; you don't put a box around the area, you put the right
+;; edge just outside the boundary of text you're interested
+;; in, but the other three edges are just inside.
 
-;; There's no clean way of thinking about this...  you
-;; don't put a box around the area, you put the right
-;; edge just outside the boundary of text you're
-;; interested in, but the other three edges are just
-;; inside.
 
 ;; The rectpara metadata is stored in the *name* of the edit buffer,
 ;; including the rectpara coordinates and name of the buffer it's from.
@@ -226,13 +222,46 @@ With no argument strips whitespace from end of every line in Picture buffer
 ;; An example edit buffer name:
 ;;   *rectpara edit: 8-61-30-231 PRETENTIOUS_RAMBLINGS*
 
-;; This makes the edit buffer names for each rectpara
-;; unique (though the main reason I did this is I didn't
-;; understand buffer local variables when I came up with
-;; this trick).
+;; This makes the edit buffer names for each rectpara unique
+;; (though the main reason I did this is I didn't understand
+;; buffer local variables when I came up with this trick).
 
-;;;
-;;; some general functions:
+;;========
+;;; primitive functions used throughout
+
+;;--------
+;; turn openspace to actual spaces
+
+(defun rectpara-spaceout (&optional count)
+  "Twiddle cursor location with picture-mode to insert spaces in open area.
+This no-op turns out to be an effective way of covering certain bugs
+that come up, e.g. if you happen to be near the end of the buffer
+or line, and empty space isn't getting treated the same as whitespace
+you can get mysterious args out of range errors and the like."
+  (unless count
+    (setq count 3))
+  (picture-forward-column count)
+  (picture-backward-column count)
+  )
+
+;;---------
+;; where am i
+
+(defun rectpara-current-row ()
+  "Get the row of the current position.
+The first line is row 1.  Note, could also use: \\[picture-current-line]."
+  (let ( (pos (point) )
+         row )
+    ;; if we're at the eob, play it safe and add a space
+    (if (= pos (point-max))
+          (rectpara-spaceout 1) )
+    (setq row
+           (count-lines (point-min) (1+ pos)))
+    row))
+
+(defun rectpara-current-column ()
+  "Returns the column number, where the first column is 1."
+    (1+ (current-column)))
 
 (defun rectpara-tlofp ()
   "Return t if on the top line of the file, nil otherwise"
@@ -262,6 +291,10 @@ Essentially, answers the question does this column look blank in this region?"
                          (char-to-string lower_char)))
       (string-match "^[ \t\n\000]+$" tern) )))
 
+
+
+;;--------
+;; rectpara-move-* commands
 
 (defun rectpara-move-column (target-col)
   "Move to a given column, numbering from 1.
@@ -293,7 +326,6 @@ in any blank regions to the left of the column."
   (let* ( (init (rectpara-current-row))
           (delta (- target-row init))
           (i 0) )
-
     ;; delta can be positive or negative, so need to check whether to
     ;; step up or down (really?  yeah, I think so).
     (let* ( (direction (signum delta) )
@@ -303,22 +335,21 @@ in any blank regions to the left of the column."
         (setq loop (1+ loop))
         )) ))
 
+(defun rectpara-move-to-x-y-location (column row)
+  "Move to a given location, given the COLUMN and ROW (numbering from 1).
+This version creates spaces in the open space of the effected region--
+between the current position and the one moved to."
+  (interactive)
+  (rectpara-move-column column)
+  (rectpara-move-row    row) )
 
-(defun rectpara-move-to-x-y-location-lite (col row)
+(defun rectpara-move-to-x-y-location-lite (column row)
   "Move to a given location, given the column and row (numbering from 1).
 This 'lite' version makes no effort to autovivify spaces in the effected region."
   (interactive)
   (goto-line row)
-  (move-to-column (- col 1) 't))
+  (move-to-column (- column 1) 't))
 
-(defun rectpara-move-to-x-y-location (col row)
-  "Move to a given location, given the column and row (numbering from 1).
-This version autovivify spaces in the whitespace of the effected region,
-between the current position and the one moved to."
-  (interactive)
-  (rectpara-move-column col)
-  (rectpara-move-row    row)
-  )
 
 (defun rectpara-convert-coords-to-start-end (coords)
   "Given a list of the rectpara coordinates x1 y1 x2 y2 return
@@ -344,13 +375,9 @@ you're in the buffer with the rectpara."
     )))
 
 
-;; rectpara-find-rectpara-boundaries
-;; Find left bound, move to left bound, find top and bottom bounds,
-;; then iterate through the lines, checking the line lengths.
-;; Select the maximum as the rectpara right bound.
 ;; Used by "select" (and indirectly by "horizontal")
 (defun rectpara-find-rectpara-boundaries ()
-  "Find boundaries of rectpara cursor is inside of.
+  "Find boundaries of rectpara where point resides.
 Returns list of coords: x1 y1 x2 y2"
   (let (left bot top right)
     (save-excursion
@@ -540,48 +567,7 @@ current rectpara with the region active."
     (message "left: %d top: %d right: %d bottom: %d" left top right bot)
   ))
 
-;; used by rectpara-edit-extract-rectpara (and in turn by "done")
-(defun rectpara-edit-find-rectangle-boundaries ()
-  "In rectpara 'edit', find boundaries of rectangle around all text.
-Returns list of coords: x1 y1 x2 y2."
-;; This version covers the case of a rectpara subdivided during editing.
-;; Additional rectparas should not be stranded in the edit buffer.
-  (let (left bot top right)
-    (save-excursion
-      (setq left 1)  ;; 1 based indexing, right?
-      (setq top  1)
-      (goto-char (point-min))  ;; so: skip the "mystery" kludge then?
-      (let ( (i     0)
-             (max   0)
-             (candi 0)
-             (width 0) )
-        (while (<= i (point-max))
-          (move-end-of-line 1) ;; really need that 1?  huh?
-          (setq candi (current-column))
-
-          (if (> candi max) (setq max candi))
-
-          (forward-line) ;; or whatever move down one
-          (setq i (1+ i))
-          )
-        (setq right (+ 1 max))
-
-        (setq bot
-              (count-lines (point-min) (point-max)))
-       (list left top right bot)))))      ; x1 y1, x2 y2
-
-;; used by "done"
-(defun rectpara-edit-extract-rectpara ()
-  "Extract the current rectangle"
-  (let (coords start-end start end rectpara)
-    (setq coords (rectpara-edit-find-rectangle-boundaries))
-    (setq start-end (rectpara-convert-coords-to-start-end coords))
-    (setq start (car start-end))
-    (setq end (nth 1 start-end))
-
-    (setq rectpara (extract-rectangle start end))
-   ))
-
+;; used by "edit" and "done"
 (defun rectpara-get-width-rectpara (rectpara)
 "Get the width of the given rectpara"
      (let ( (l (- (length rectpara) 1))
@@ -652,17 +638,25 @@ Uses an initial fill-column setting of 30."
   (rectpara-spaceout)
   (rectpara-edit-rectpara 30 ) )
 
-(defun rectpara-spaceout (&optional count)
-  "Twiddle cursor location with picture-mode commands to create spaces.
-This no-op turns out to be an effective way of covering certain bugs
-that pop up, e.g. if you happen to be near the end of the buffer
-or line, and empty space isn't getting treated the same as whitespace
-you can get mysterious args out of range errors and the like."
-  (unless count
-    (setq count 3))
-  (picture-forward-column count)
-  (picture-backward-column count)
-  )
+
+
+(defun rectpara-exit (&optional nostrip)
+  "Undo rectpara-mode and return to previous major mode.
+With no argument strips whitespace from end of every line in Picture buffer
+  otherwise just return to previous mode."
+;; This is copied from picture-mode-exit, which can't be used by a derived mode,
+;; because it checks the mode to make sure the buffer is in picture-mode.
+  (interactive "P")
+  (if (not (eq major-mode 'rectpara-mode))
+      (error "You aren't in rectpara-mode.")
+    (if (not nostrip) (picture-clean))
+    (setq mode-name picture-mode-old-mode-name)
+    (use-local-map picture-mode-old-local-map)
+    (setq major-mode picture-mode-old-major-mode)
+    (kill-local-variable 'tab-stop-list)
+    (setq truncate-lines picture-mode-old-truncate-lines)
+    (force-mode-line-update)))
+
 
 
 ;;; This is how I'm trying to handle:
@@ -752,6 +746,7 @@ If increased in size, opens up white space as needed."
       (exchange-point-and-mark)
     )))
 
+;; used by "done"
 (defun rectpara-edit-mode-buffer-metadata-from-name ()
   "Interprets the current edit_buffer name, extracting target
 buffer and x/y coordinates.  Returns a list of the two (where
@@ -777,6 +772,50 @@ Note: the edit buffer is expected to have a name like:
     (list target_buffer coords)
    ))
 
+
+;; used by "done" (indirectly, via rectpara-edit-extract-rectpara)
+(defun rectpara-edit-find-rectangle-boundaries ()
+  "In rectpara 'edit', find boundaries of rectangle around all text.
+Returns list of coords: x1 y1 x2 y2."
+;; This version covers the case of a rectpara subdivided during editing.
+;; Additional rectparas should not be stranded in the edit buffer.
+  (let (left bot top right)
+    (save-excursion
+      (setq left 1)  ;; 1 based indexing, right?
+      (setq top  1)
+      (goto-char (point-min))  ;; so: skip the "mystery" kludge then?
+      (let ( (i     0)
+             (max   0)
+             (candi 0)
+             (width 0) )
+        (while (<= i (point-max))
+          (move-end-of-line 1) ;; really need that 1?  huh?
+          (setq candi (current-column))
+
+          (if (> candi max) (setq max candi))
+
+          (forward-line) ;; or whatever move down one
+          (setq i (1+ i))
+          )
+        (setq right (+ 1 max))
+
+        (setq bot
+              (count-lines (point-min) (point-max)))
+       (list left top right bot)))))      ; x1 y1, x2 y2
+
+;; used by "done"
+(defun rectpara-edit-extract-rectpara ()
+  "Extract the current rectangle"
+  (let (coords start-end start end rectpara)
+    (setq coords (rectpara-edit-find-rectangle-boundaries))
+    (setq start-end (rectpara-convert-coords-to-start-end coords))
+    (setq start (car start-end))
+    (setq end (nth 1 start-end))
+
+    (setq rectpara (extract-rectangle start end))
+   ))
+
+;; used by "done"
 (defun rectpara-zap-this-edit-window (rectpara-buffer)
   "Close the currently active edit window and return to the source RECTPARA-BUFFER."
   ;; This is neater behavior than just doing a (switch-to-buffer rectpara-buffer)
@@ -789,6 +828,7 @@ Note: the edit buffer is expected to have a name like:
     (set-buffer rectpara-buffer)
     ))
 
+;; used by "done"
 (defun rectpara-clear-rectangle (coords)
   "Clear the rectangle with the given COORDS."
     (let* ( (start-end (rectpara-convert-coords-to-start-end coords))
@@ -797,6 +837,7 @@ Note: the edit buffer is expected to have a name like:
       (clear-rectangle start end)
       ))
 
+;; used by "done"
 ;; nickname: "horizontal"
 (defun rectpara-deal-with-horizontal-expansion (new-width old-width coords)
   "Juggle things out of the way horizontally so expanded rectpara will fit."
@@ -1070,6 +1111,8 @@ This just steps through a list and skips every other value."
       )))
 
 
+
+;; used by "done"
 ;; nickname: "vertical"
 (defun rectpara-deal-with-vertical-expansion (new_height old_height coords)
   "Juggle things out of the way so expanded rectpara will fit."
@@ -1226,7 +1269,6 @@ removes them, returns them with their coordinates"
          (picture-insert-rectangle rectpara)
          (setq big_list (cdr big_list))))))
 
-
 ;; Just used by:
 ;;   rectpara-extract-rectpars-with-coords-on-line
 (defun rectpara-extract-rectpara-with-coords ()
@@ -1236,6 +1278,7 @@ removes them, returns them with their coordinates"
     (setq rectpara
           (rectpara-extract-rectpara-at-coords coords))
     (list rectpara coords)))
+
 
 (defun rectpara-extract-rectpara-at-coords (coords)
   "Given COORDS returns a copy of rectpara as list of strings."
@@ -1247,6 +1290,7 @@ removes them, returns them with their coordinates"
     rectpara )
 
 
+;; unused
 (defun rectpara-remove-rectparas-in-list (big_list)
   "Actually remove the rectparas in the given list"
    (let (coords rectpara start-end start end)
@@ -1263,7 +1307,7 @@ removes them, returns them with their coordinates"
 
 
 
-
+;; TODO move these two up to follow edit, or keep them together in an extractors block?
 ;; used by "edit"
 (defun rectpara-extract-rectpara-with-coords-and-rel-pos ()
   "Returns current rectpara along with a list of x-y coordinates, clears the original rectangle"
@@ -1297,33 +1341,33 @@ The column and row numbers are 1 indexed."
     (list column row) ;; col/row seems backwards, but convention is x/y
   ))
 
-;; used by: rectpara-x-and-y-from-pos
-;;          rectpara-extract-rectpars-to-right
-;;          rectpara-open-how-far-over (and in turn "horizontal")
-;;          rectpara-move-row
-(defun rectpara-current-row ()
-  "Get the row of the current position.
-The first line is row 1.  Note, could also use: \\[picture-current-line]."
-  (let ( (pos (point) )
-         row )
-    ;; if we're at the eob, play it safe and add a space
-    (if (= pos (point-max))
-          (rectpara-spaceout 1) )
-    (setq row
-           (count-lines (point-min) (1+ pos)))
-    row))
 
-;; used by: rectpara-move-column
-;;          rectpara-open-how-far-over
-;;          rectpara-extract-rectpars-to-right
-(defun rectpara-current-column ()
-  "Returns the column number, where the first column is 1."
-    (1+ (current-column)))
+;; unused
+(defun rectpara-copy-rectpara-at-coords (coords)
+  "Given COORDS returns a copy of rectpara as rectangle, i.e. list of strings."
+    (setq start-end (rectpara-convert-coords-to-start-end coords))
+    (setq start (car start-end))
+    (setq end (nth 1 start-end))
+    (setq rectpara (extract-rectangle start end))
+    ;; (clear-rectangle start end)  ;;; the sole difference between copy and extract
+    rectpara )
+
+;; unused
+(defun rectpara-copy-rectpara-with-coords ()
+  "Returns current rectpara along with a list of x-y coordinates"
+  (let (coords start-end start end rectpara)
+    (setq coords (rectpara-find-rectpara-boundaries))
+    (setq rectpara
+          (rectpara-copy-rectpara-at-coords coords))
+    (list rectpara coords)))
 
 
 
 ;;; ======
 ;;; TODO
+
+;;; o  flexible keymap definition functions: give user choice
+;;;    of prefix, document in setup.
 
 ;;; o  code moves things out of the way if an edited rectpara
 ;;;    gets bigger, but it does it a little differently for
@@ -1334,19 +1378,18 @@ The first line is row 1.  Note, could also use: \\[picture-current-line]."
 ;;;    and simply refuse to complete a return from edit
 ;;;    until issue is resolved manually.
 
-
-;;; o  still litters emacs with open rectpara edit buffers.
-;;;
-
 ;;; o  The edit buffers really should be saved to file locations
 ;;;    in /tmp so it doesn't keep beeping at you when you do C-x C-s
 ;;;    out of habit.
 
-;;; o  Feature: would like a "skip to next rectpara" command.
-;;;    Look for nearest rectpara downward and to the right
-;;;    when there's more than one... do something reasonable.
-;;;     o  Just go to the first one (leftmost).
-;;;     o  Provide a second command to cycle through choices
+;;; o  should close open rectpara edit buffers when done with them
+
+;;; o  new class of features to trace chains of rectparas:
+;;;    o  would like a "skip to next rectpara" command.
+;;;       Look for nearest rectpara downward and to the right
+;;;       when there's more than one... do something reasonable.
+;;;        o  Just go to the first one (leftmost).
+;;;        o  Provide a second command to cycle through choices
 
 
 ;;=======
