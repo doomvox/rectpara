@@ -57,13 +57,17 @@
 
 (require 'picture)
 
+;;-------
+;; global variables
 
-;; Having a global makes it a little easier to write recursive
-;; routines that accumulate rectparas (but it's not required, so
-;; get rid of it: TODO).
+;; Having a global for this makes it a little easier to write recursive routines
+;; that accumulate rectparas without passing the intermediate results around.
 (defvar rectpara-stash-plist ()
-  "Global to stash a unique list of rectparas.")
+  "Global stash of a unique list of rectparas.")
 (make-variable-buffer-local 'rectpara-stash-plist)
+
+;;-------
+;; define (and set-up) rectpara modes
 
 (define-derived-mode rectpara-mode
   picture-mode "Rectpara"
@@ -77,12 +81,10 @@ some additional commands to select or edit a rectpara:
   (setq case-fold-search nil)  )
 
 
-(defun turn-off-auto-fill ()
-  "Unconditionally turn off Auto Fill mode."
-  (auto-fill-mode -1))
 
 ;;;; TODO I once worked out techniques to be more flexible about
-;;;;      doing keymap setups... where did I do that stuff?
+;;;;      doing keymap setups... look that up, do something similar here.
+;;;;      Maybe in rep.el?
 
 ;;; Grabbing Alt o as the doOomfile-mode prefix
 
@@ -527,11 +529,10 @@ Defaults to rectpara-stash-plist."
   (setq plist
         (plist-put plist (intern keystr) value)))
 
-;; Did I really need to write this?  Why am I using a language that's
-;; making me do things like this?
+;; It's hard to believe I needed to write this.
 (defun rectpara-plist-keys ( plist )
-  "Return all keys of the given plist as a list of strings.
-This just steps through a list and skips every other value."
+  "Return all keys of the given plist as a list of strings."
+;; Step through a list and skipping the even values
   (let ( (flip t)
          (accumulator) )
     (dolist (item plist)
@@ -545,10 +546,9 @@ This just steps through a list and skips every other value."
               ))
     accumulator))
 
-;; unused (for parallelism)
 (defun rectpara-plist-values ( plist )
-  "Return all values of the given plist as a list.
-This just steps through a list and skips every other value."
+  "Return all values of the given plist as a list."
+;; Step through a list and skipping the odd values
   (let ( (flip nil)
          (accumulator ()) )
     (dolist (item plist accumulator)
@@ -868,10 +868,27 @@ Returns list of coords: x1 y1 x2 y2."
       (clear-rectangle start end)
       ))
 
+
+;;;--------
+;;; rectpara size change collision handling:
+
+;;; The "done" routine has to do some work to deal with the case
+;;; of a rectpara getting larger during editing: rather than
+;;; over-write nearby text, we try to identify effected rectparas
+;;; and move them (either rightward or downward) enough to get
+;;; them out of the way.
+
+;;;--------
+;;; horizontal collisions
+
 ;; used by "done"
 ;; nickname: "horizontal"
 (defun rectpara-deal-with-horizontal-expansion (new-width old-width coords)
   "Juggle things out of the way horizontally so expanded rectpara will fit."
+  ;; Looks to the right and snags anything in the way of the rectpara
+  ;; insert, then puts the rectparas back in locations shifted over
+  ;; enough that there'll be no collision.  Uses a recursive check
+  ;; on each rectpara to find other rectparas that need to be moved.
   (let* (
           (left  (nth 0 coords))
           (top   (nth 1 coords))
@@ -959,8 +976,6 @@ Note: the maximum return value is the horizon." ;; horizon includes padding
         )
       ;; (message "open-field: %d" open-field) ;; DEBUG
     open-field)))
-
-
 
 ;; used by "horizontal" (rectpara-deal-with-horizontal-expansion)
 (defun rectpara-extract-rectpars-to-right ( coords  horizon )
@@ -1066,32 +1081,9 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
               (picture-insert-rectangle contents)
           )))))))
 
-;;;--------
-;;; rectpara size change collision handling:
 
-;;; The "done" routine has to do some work to deal with the
-;;; case of a rectpara getting larger during editing: rather
-;;; than risk over-writing adjacent text, we try to identify
-;;; effected rectparas and move them slightly (other rightward
-;;; or downward) to get them out of the way.
-
-;;; Handling vertical collisions:
-
-;;; Go to the bottom and look to the left and right, if there's
-;;; anything there, move all the rectangles out of the way temporarly;
-;;; insert enough blank lines to handle the problem, then restore the
-;;; rectangles.
-
-;;; There's no need for this whitespace insertion unless the new rectangle
-;;; will encroach on old, so we check that first.
-
-
-;;; Handling the case of width increase:
-;;; look to the right, snag anything in the way do the rectpara insert, then put
-;;; the rectangles back in locations shifted over enough that there'll be no
-;;; collision.  Uses a recursive check to find rectparas that need to be moved
-;;; because another has needed to be moved.
-
+;;;------
+;;; vertical collisons
 
 ;; used by "done"
 ;; nickname: "vertical"
@@ -1344,36 +1336,37 @@ The column and row numbers are 1 indexed."
 
 
 
-;;; ======
-;;; TODO
+;;========
+;; TODO
 
-;;; o  flexible keymap definition functions: give user choice
-;;;    of prefix, document in setup.
+;; o  flexible keymap definition functions: give user choice
+;;    of prefix, document in setup.
 
-;;; o  code moves things out of the way if an edited rectpara
-;;;    gets bigger, but it does it a little differently for
-;;;    horizontal and vertical expansion: make the vertical
-;;;    (old code) consistent with the horizontal (new code).
+;; o  code moves things out of the way if an edited rectpara
+;;    gets bigger, but it does it a little differently for
+;;    horizontal and vertical expansion: make the vertical
+;;    (old code) consistent with the horizontal (new code).
 
-;;; o  would be useful to shut off expansion handling, (defcustom)
-;;;    and simply refuse to complete a return from edit
-;;;    until issue is resolved manually.
+;; o  would be useful to shut off expansion handling, (defcustom)
+;;    and simply refuse to complete a return from edit
+;;    until issue is resolved manually.
 
-;;; o  The edit buffers really should be saved to file locations
-;;;    in /tmp so it doesn't keep beeping at you when you do C-x C-s
-;;;    out of habit.
+;; o  The edit buffers really should be saved to file locations
+;;    in /tmp so it doesn't keep beeping at you when you do C-x C-s
+;;    out of habit.
 
-;;; o  should close open rectpara edit buffers when done with them
+;; o  should close open rectpara edit buffers when done with them
 
-;;; o  new class of features to trace chains of rectparas:
-;;;    o  would like a "skip to next rectpara" command.
-;;;       Look for nearest rectpara downward and to the right
-;;;       when there's more than one... do something reasonable.
-;;;        o  Just go to the first one (leftmost).
-;;;        o  Provide a second command to cycle through choices
+;; o  new class of features to trace chains of rectparas:
+;;    o  would like a "skip to next rectpara" command.
+;;       Look for nearest rectpara downward and to the right
+;;       when there's more than one... do something reasonable.
+;;        o  Just go to the first one (leftmost).
+;;        o  Provide a second command to cycle through choices
 
 
 ;;=======
+;; legal
 
 ;; Copyright 2016 Joseph Brenner
 ;; License: GPL 2.0 (see boilerplate below)
