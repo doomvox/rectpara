@@ -769,7 +769,8 @@ If increased in size, opens up white space as needed."
 
       (if (> new-height old-height)
 ;;          (rectpara-deal-with-vertical-expansion delta-height delta-width coords) )
-          (rectpara-deal-with-vertical-expansion-OLDSTYLE delta-height delta-width coords) )
+;;          (rectpara-deal-with-vertical-expansion-OLDSTYLE delta-height delta-width coords) )
+          (rectpara-deal-with-vertical-expansion-EXPERIMENTAL delta-height delta-width coords) )
 
       (rectpara-clear-rectangle coords)
 
@@ -918,7 +919,9 @@ Returns list of coords: x1 y1 x2 y2."
           (rectpara-open-how-far-over right horizon top bot))
 
     ;; difference in open-field and expansion is how much we need to open
+    ;; (( but that's not this, is it? TODO REALLY ))
     (setq overlap (- new-right (+ open-field right)))
+
     (setq shift (+ overlap padding))
 
     (cond ( (> shift 0 )  ;; don't try to do anything unless something needs to be done
@@ -1092,7 +1095,7 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
 ;; nickname: "vertical" (newstyle, experimental)
 
 ;;;;; (defun rectpara-deal-with-vertical-expansion (new-height old-height coords )
-(defun rectpara-deal-with-vertical-expansion (delta-height delta-width coords )
+(defun rectpara-deal-with-vertical-expansion-EXPERIMENTAL (delta-height delta-width coords )
   "Juggle things out of the way vertically so expanded rectpara will fit."
   ;; uses a recursive check similar to "horizontal"
   (let* (
@@ -1122,8 +1125,13 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
           (rectpara-open-how-far-down delta-height left new-right))
 
     ;; difference in open-field and expansion is how much we need to open
-    (setq overlap (- new-bot (+ open-field bot)))
-    (setq shift (+ overlap padding))
+    ;; (( but that's NOT this is it? TODO REALLY ))
+    ;; (setq overlap (- new-bot (+ open-field bot)))
+    ;; These are both relative numbers:
+    ;;   expansion: delta-height
+    ;;   room:      open-field
+    (setq overlap (- delta-height open-field)) ;; if delta exceeds open, this is negative
+    (setq shift (+ overlap padding)) ;; adding padding to this might not be right... TODO
 
     (cond ( (> shift 0 )  ;; don't try to do anything unless something needs to be done
 
