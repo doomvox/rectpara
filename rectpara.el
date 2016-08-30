@@ -296,13 +296,12 @@ Essentially, answers the question does this column look blank in this region?"
 
 ;;--------
 ;; rectpara-move-* commands
-
 (defun rectpara-move-column (target-col)
   "Move to a given column, numbering from 1.
 This moves across the current row.
 Autovivifying spaces just on that row.
-(so, to infill a rectangular area, go to column first,
-then use: \\[rectpara-move-row])."
+So, to infill a rectangular area, go to column first,
+then use: rectpara-move-row."
   (interactive "Ncol:")
   (let* ( (init (rectpara-current-column))
           (delta (- target-col init))
@@ -317,7 +316,8 @@ then use: \\[rectpara-move-row])."
 
 ;; Used by: "select", "vertical", "horizontal"...
 ;;  rectpara-open-how-far-over, rectpara-move-to-x-y-location, rectpara-extract-rectpars-to-right
-(defun rectpara-move-row ( target-row )
+
+(defun rectpara-move-row (target-row)
   "Move to a given TARGET-ROW, numbering from 1.
 This moves down through the current column, autovivfying spaces
 in any blank regions to the left of the column."
@@ -630,7 +630,7 @@ current rectpara with the region active."
   ))
 
 ;; used by "edit" and "done"
-(defun rectpara-get-width-rectpara (rectpara)
+(defun rectpara-width-rectangle (rectpara)
 "Get the width of the given rectpara"
      (let ( (l (- (length rectpara) 1))
             (i 0)
@@ -668,8 +668,7 @@ current rectpara with the region active."
     (setq row  (nth 1 pair-pos))
 
     (unless edit-fill-col
-      (setq edit-fill-col (rectpara-get-width-rectpara rectpara))
-      )
+      (setq edit-fill-col (rectpara-width-rectangle rectpara)) )
 
     ;; force two window display when editing
     (one-window-p 't)
@@ -684,11 +683,8 @@ current rectpara with the region active."
 
     ;; move to correct relative position in the new buffer
     (rectpara-move-to-x-y-location-lite (1+ (- col left)) (1+ (- row top)))
-
     (rectpara-edit-mode)
-
     (set-fill-column edit-fill-col)
-
     (message "Use either C-x # or C-c c-c to finish editing")
   ))
 
@@ -754,7 +750,7 @@ If increased in size, opens up white space as needed."
            (right (nth 2 coords))
            (bot   (nth 3 coords))
 
-           (new-width (rectpara-get-width-rectpara new-rectpara))
+           (new-width (rectpara-width-rectangle new-rectpara))
            (old-width (1+ (- right left)))
 
            (new-height (length new-rectpara))
@@ -1108,10 +1104,10 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
           (new-bot (+ bot delta-height))
           (new-right (+ right delta-width ))
 
-          (padding 3)
+          (padding 2)
           (horizon (+ delta-height padding))
 
-          open-field overlap shift
+          open-field overlap shiftdown
           ;;; temp-hidden-rectparas
           )
 
@@ -1122,7 +1118,9 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
     (rectpara-move-row bot)
 
     (setq open-field
-          (rectpara-open-how-far-down delta-height left new-right))
+;;          (rectpara-open-how-far-down delta-height left new-right))
+;;          (rectpara-open-how-far-down delta-height left new-right))
+          (rectpara-open-how-far-down horizon left new-right))
 
     ;; difference in open-field and expansion is how much we need to open
     ;; (( but that's NOT this is it? TODO REALLY ))
@@ -1130,73 +1128,27 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
     ;; These are both relative numbers:
     ;;   expansion: delta-height
     ;;   room:      open-field
-    (setq overlap (- delta-height open-field)) ;; if delta exceeds open, this is negative
-    (setq shift (+ overlap padding)) ;; adding padding to this might not be right... TODO
 
-    (cond ( (> shift 0 )  ;; don't try to do anything unless something needs to be done
+    (setq shiftdown (- (+ delta-height padding) open-field))
 
+    ;; positive means we got to move stuff; experimentally can
+    ;; see that we need a shiftdown that's a little bigger, so I
+    ;; add padding, but it could be that *this* no reason this
+    ;; padding need be the same as the other
+
+    (cond ( (> shiftdown 0 )
            ;; Stores extracted rectparas in global var: rectpara-stash-plist
-           (rectpara-extract-rectpars-to-bot coords horizon)
+           (rectpara-extract-rectpars-down-below coords horizon)
 
            ;; Pulls rectparas back in from the global rectpara-stash-plist
-           (rectpara-restore-rectparas-shifted-down  shift )
+           (rectpara-restore-rectparas-shifted-down  shiftdown )
            )
           )))
 
-;; used by "vertical"
-;; ;; there's already a rectpara-open-how-far-down, try to use it:
-;; (defun rectpara-open-how-far-over (col horizon top bot)
-;;   "Find amount of open space next to column COL, between rows TOP and BOT.
-;; Looks no further than the HORIZON (a limited number of columns).
-;; Note: the maximum return value is the horizon." ;; horizon includes padding
-;;   (save-excursion
-;;     (let* (
-;;             (i 0)   ;; loop indicie: a vertical count from the column COL
-;;             (absolute-horizon (+ col horizon) )
-
-;;             ;; looking for the "open-field": the end of the open columns
-;;             (open-field absolute-horizon) ;; initialized to it's max value
-;;             (row-candidate 0)             ;; candidate from each row
-
-;;             (farther 1)   ;; need to look up and down a little farther to keep from encroaching on stuff
-;;             (top (- top farther))
-;;             (bot (+ bot farther))
-;;            )
-
-;;       ;; loop vertically from top to bottom, looking to the right of curcol
-;;       (rectpara-move-row top)
-
-;;       (while (<= (rectpara-current-row) bot )
-;;         (setq i 0)
-
-;;         ;; move (back) to original column to check from
-;;         (rectpara-move-column col)
-
-;;         ;; on each line, crawl forward looking for non-space
-;;         (catch 'OUT
-;;           (while (< (rectpara-current-column) absolute-horizon )
-;;             (cond ( (not (looking-at " "))  ;; maybe better: "[ \t]"
-;;                     (throw 'OUT nil) ) )
-
-;;             ;; two steps forward and one back (to autovivify spaces in empty space)
-;;             (picture-forward-column  2)
-;;             (picture-backward-column 1)
-;;             (setq i (1+ i))
-;;             ))
-;;         (setq row-candidate i)
-
-;;         ;; if candidate is less than known limit, bring down the limit further
-;;         (if (< row-candidate open-field)
-;;             (setq open-field row-candidate))
-
-;;         (picture-move-down 1)
-;;         )
-;;       ;; (message "open-field: %d" open-field) ;; DEBUG
-;;     open-field)))
 
 
 ;; used by "vertical" (rectpara-deal-with-vertical-expansion)
-(defun rectpara-extract-rectpars-to-bot ( coords  horizon )
+(defun rectpara-extract-rectpars-down-below ( coords  horizon )
   "Look to the downward below the area given by COORDS, extract rectparas, return as list.
 Does a cascading check for what is down below, looking as far as HORIZON.
 Works by calling this routine recursively on each rectpara.
@@ -1209,32 +1161,20 @@ and a rectangle, i.e. a list of lines of text."
            (top   (nth 1 coords))
            (right (nth 2 coords))
            (bot   (nth 3 coords))
-
            (absolute-horizon (+ bot horizon ))
-
            (farther 1) ;; need to peek left and right a little farther to get everything.
-
+           (rp-count 0) ;; DEBUG
            rectpara-contents  found-coords
            )
-      ;; loop vertically from right to left, looking below the rectpara
+      ;; work across from left to right, looking for rectparas down in each column
       (rectpara-move-column (- left farther))
-      (while (<= (rectpara-current-column) (+ bot farther) )
-
-          (setq found-coords () )
-
-          ;; move to the column just outside the given rectpara coords
+      (while (<= (rectpara-current-column) (+ right farther) )
+          ;; move to the row just below the given rectpara coords
           (rectpara-move-row (1+ bot))
 
-          ;; on each line, crawl downward looking for non-space
-          (catch 'OUT
-            (while (<= (rectpara-current-row) absolute-horizon )
-              (cond ( (not (looking-at " "))  ;; maybe better: "[ \t]"
-                      (setq found-coords (rectpara-find-rectpara-boundaries))
-                      (throw 'OUT nil) ) )
-              ;; duck down, then step back up (to autovivify spaces)
-              (picture-move-down 2)
-              (picture-move-up 1)
-              ))
+          ;;(setq found-coords () )          ;; (setq found-coords () )
+          (setq found-coords
+                (rectpara-find-next-rectpara-down-this-column absolute-horizon))
 
           ;; using global plist stash to accumulate a unique list of rectparas
           (cond ( found-coords
@@ -1244,12 +1184,42 @@ and a rectangle, i.e. a list of lines of text."
                     (setq rectpara-stash-plist
                           (plist-put rectpara-stash-plist (intern coords-str) rectpara-contents))
 
-                    ;; recursive call to keep looking out botwards of the found rectpara
-                    (rectpara-extract-rectpars-to-bot found-coords horizon)
+                    (setq rp-count (1+ rp-count))
+                    (if (> rp-count 1000)
+                        (error "More than 1000 rps in stash: WTF?")) ;; DEBUG
+
+                    ;; recursive call to keep looking below the found rectpara
+                    (rectpara-extract-rectpars-down-below found-coords horizon)
                     )))
           (picture-forward-column  1)
           ))
     rectpara-stash-plist ))
+
+
+(defun rectpara-find-next-rectpara-down-this-column (absolute-horizon)
+  "Crawls down current column looking for non-space.
+Returns the coords of the rectpara found at that point.  Required
+argument ABSOLUTE-HORIZON specifies the row at which search
+should stop."
+  ;; in each column, crawl downward looking for non-space
+  (message "col: %d" (rectpara-current-column)) ;; DEBUG
+  (let (found-coords)
+    (catch 'OUT
+      (while (<= (rectpara-current-row) absolute-horizon )
+        (cond ( (not (looking-at " "))
+                (setq found-coords (rectpara-find-rectpara-boundaries))
+                (throw 'OUT nil) ) )
+        ;; Duck Down, Then Step back up (to autovivify spaces)
+        (rectpara-spaceout)
+        (picture-move-down 1)
+        (rectpara-spaceout)
+        (picture-move-down 1)
+        (rectpara-spaceout)
+        (picture-move-up   1)
+        ))
+  found-coords))
+
+
 
 ;; used by rectpara-deal-with-vertical-expansion
 (defun rectpara-restore-rectparas-shifted-down ( &optional downshift plist )
@@ -1333,8 +1303,7 @@ PLIST defaults to rectpara-stash-plist. DOWNSHIFT defaults to 0."
 
       (rectpara-move-row bot)
       (setq toe-room
-;;            (rectpara-open-how-far-down delta-height left right))
-            (rectpara-open-how-far-down delta-height left new-right))
+            (rectpara-open-how-far-down delta-height left right))
 
       ;; TODO hack:
       ;; when vertical expansion is 1, 2 works here, 3 works otherwise.
@@ -1353,34 +1322,37 @@ PLIST defaults to rectpara-stash-plist. DOWNSHIFT defaults to 0."
     ))
 
 ;; used by "vertical" (both oldstyle and new, at present)
-(defun rectpara-open-how-far-down (checkdistance left right)
+(defun rectpara-open-how-far-down (checkdistance left right &optional staythere)
   "Looks downward to see how far until the end of open space.
 From the current row, scans down through the given CHECKDISTANCE,
 verifying that there is whitespace between the LEFT and RIGHT
 boundaries, returning the end location.  Note: the maximum return
 value is the CHECKDISTANCE.  As a side-effect, creates lines at
 the bottom of the buffer if the region we're checking extends
-down past it."
+down past it.  If option STAYTHERE is t, will not restore point."
   (let ( (saveloc (point))
          (i 0)
          (limit checkdistance)
         )
     (catch 'UP
-      (while (< i checkdistance)
+      (while (<= i checkdistance)
         (let ( (line
                 (rectpara-get-line-segment-as-string left right))
                )
-
           (if (not (string-match "^[ ]*$" line))
               (throw 'UP (setq limit i))
             )
 
           ;; advance to next line, creating a blank line if at end-of-buffer
-          (picture-move-down 1)
+          (picture-move-down 2)
+          (picture-move-up 1)
           (setq i (1+ i))
           )))
-    (setq limit (1+ i))  ;;; Why plus one?  Maybe try without but with "<=" comparison...
-    (goto-char saveloc)
+    ;; (setq limit (1+ i))  ;;; Why plus one?  Maybe try without but with "<=" comparison...
+
+    (unless staythere
+      (goto-char saveloc))
+
     limit))
 
 ;; used by rectpara-open-how-far-down
@@ -1445,10 +1417,9 @@ removes them, returns them with their coordinates"
                 (rectpara-move-column next-col)
 
                 (setq result-list (append result-list (list rectpara-with-coords)))
-                                      ;; shifting on to the end of the list
+                                       ;; shifting on to the end of the list
                 ))
            (picture-forward-column 1)))
-
        result-list)))
 
 ;; used by "vertical"
