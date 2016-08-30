@@ -232,6 +232,7 @@ finish and return the rectpara to the original buffer.
 
 ;;--------
 ;; turn openspace to actual spaces
+;; (note: also see "rectpara-move-* commands")
 
 (defun rectpara-spaceout (&optional count)
   "Twiddle cursor location with picture-mode to insert spaces in open area.
@@ -246,16 +247,16 @@ you can get mysterious args out of range errors and the like."
   )
 
 ;;---------
-;; where am i
+;; where am i and what's here
 
 (defun rectpara-current-row ()
   "Get the row of the current position.
 The first line is row 1.  Note, could also use: \\[picture-current-line]."
   (let ( (pos (point) )
          row )
-    ;; if we're at the eob, play it safe and add a space
+    ;; if we're at the eob, add a few spaces
     (if (= pos (point-max))
-          (rectpara-spaceout 1) )
+          (rectpara-spaceout 2) ) ;; experimentally, 2 works, 1 doesn't: args out of range
     (setq row
            (count-lines (point-min) (1+ pos)))
     row))
@@ -293,15 +294,43 @@ Essentially, answers the question does this column look blank in this region?"
       (string-match "^[ \t\n\000]+$" tern) )))
 
 
+(defun rectpara-last-row ()
+  "Get the row number for the end of the buffer."
+  (interactive);; DEBUG
+  (save-excursion
+    (goto-char (point-max))
+    (let ( ( row (rectpara-current-row) ) )
+          (message "last row: %d" row)
+          row)))
+
+
+;;--------
+;; rectangle utilities
+
+;; used by "edit" and "done"
+(defun rectpara-width-rectangle (rectpara)
+"Get the width of the given rectpara"
+     (let ( (l (- (length rectpara) 1))
+            (i 0)
+            (max 0)
+            (candi 0)
+            (width 0) )
+       (while (<= i l)
+         (setq candi (length (nth i rectpara)))
+         (if (> candi max) (setq max candi))
+         (setq i (1+ i))
+         )
+       (setq width max)
+       (setq width (1+ width)) ;; EXPERIMENT MARKER37
+       ))
 
 ;;--------
 ;; rectpara-move-* commands
 (defun rectpara-move-column (target-col)
   "Move to a given column, numbering from 1.
-This moves across the current row.
-Autovivifying spaces just on that row.
-So, to infill a rectangular area, go to column first,
-then use: rectpara-move-row."
+This moves across the current row, autovivifying spaces just on
+that row.  To convert a rectangular area to physical spaces, use
+this first, then use: rectpara-move-row."
   (interactive "Ncol:")
   (let* ( (init (rectpara-current-column))
           (delta (- target-col init))
@@ -349,7 +378,6 @@ This 'lite' version makes no effort to autovivify spaces in the effected region.
   (goto-line row)
   (move-to-column (- column 1) 't))
 
-
 ;;---------
 ;; coordinate conversion
 
@@ -379,7 +407,7 @@ you're in the buffer with the rectpara."
 ;;-------
 ;; find rectpara boundaries
 
-;; Used by "select" (and indirectly by "horizontal")
+;; Used by "select" and (indirectly) "edit", "horizontal"....
 (defun rectpara-find-rectpara-boundaries ()
   "Find boundaries of rectpara where point resides.
 Returns list of coords: x1 y1 x2 y2"
@@ -408,6 +436,7 @@ If not started inside a rectpara, finds the left side of the buffer."
 ;; (1) there are two columns of whitespace to the left
 ;; (2) we're on the left margin of the buffer already
 ;; (3) there's only one space between us and left margin of buffer.
+  (interactive) ;; DEBUG
   (let ((loc 'nil))
     (save-excursion
       (catch 'FOUND
@@ -429,6 +458,7 @@ If not started inside a rectpara, finds the left side of the buffer."
                                             (throw 'FOUND
                                                    (setq loc (+ lastcol 2)))))))))))))
                       (not loc)))))
+    (message "left: %d" loc) ;; DEBUG
     loc))
 
 ;; used indirectly by "select", via rectpara-find-rectpara-boundaries
@@ -481,12 +511,13 @@ picture-mode commands, to fill-in spaces per the quarter-plane illusion."
                  (not loc)))))))
     loc))
 
-;; Used indirectly by "select" and "horizontal", via rectpara-find-rectpara-boundaries
+;; Used by "select", "horizontal", "edit"... via rectpara-find-rectpara-boundaries
 (defun rectpara-find-right-boundary (left top bot)
   "Find the right boundary of the current rectpara,
    given the other three edge boundaries."
 ;; Uses a pattern that allows two-space right hand boundaries,
 ;; unless there's a hard-stop punctuation there, then require three-space.
+  (interactive);; DEBUG
   (let ((line top)
         (col 0)
         (rp-line-end 'nil))
@@ -508,6 +539,9 @@ picture-mode commands, to fill-in spaces per the quarter-plane illusion."
       (setq rp-line-end 'nil)
       (rectpara-move-column left))
     (setq col (+ col 1))
+;;    (setq col (+ col 1));; EXPERIMENT MARKER37
+;;    (setq col (+ col 1));; EXPERIMENT MARKER37
+    (message "right: %d" col)
     col)))
 
 ;;--------
@@ -629,22 +663,6 @@ current rectpara with the region active."
     (message "left: %d top: %d right: %d bottom: %d" left top right bot)
   ))
 
-;; used by "edit" and "done"
-(defun rectpara-width-rectangle (rectpara)
-"Get the width of the given rectpara"
-     (let ( (l (- (length rectpara) 1))
-            (i 0)
-            (max 0)
-            (candi 0)
-            (width 0) )
-       (while (<= i l)
-         (setq candi (length (nth i rectpara)))
-         (if (> candi max) (setq max candi))
-         (setq i (1+ i))
-         )
-       (setq width max)))
-
-
 ;; Nickname: "edit"
 (defun rectpara-edit-rectpara ( &optional edit-fill-col )
   "Extract the current rectpara to another buffer for easy editing"
@@ -670,15 +688,21 @@ current rectpara with the region active."
     (unless edit-fill-col
       (setq edit-fill-col (rectpara-width-rectangle rectpara)) )
 
-    ;; force two window display when editing
-    (one-window-p 't)
+    (message
+     " width1: %d,  width2: %d" (- right left) edit-fill-col)
+
+;;    (split-window-vertically (* -1 (+ (- bot top) 5))) ;; Number of lines to display
+;;    (split-window-vertically (+ (- bot top) 5))        ;; Number of lines to display
+    (split-window-vertically)
 
     (setq edit-buffer-name
           (format "*rectpara edit: %d-%d-%d-%d %s*"
                   left top right bot (buffer-name)))
+
     (setq edit-buffer (generate-new-buffer edit-buffer-name))
 
     (switch-to-buffer-other-window edit-buffer)
+;;    (switch-to-buffer edit-buffer)
     (insert-rectangle rectpara)
 
     ;; move to correct relative position in the new buffer
@@ -729,12 +753,11 @@ If increased in size, opens up white space as needed."
         left top right bot
         edit-buffer-window
 
+        ;; note: we bgin in the edit buffer window
         (buffer-md
          (rectpara-edit-mode-buffer-metadata-from-name))
         (target-buffer (nth 0 buffer-md))
         (coords        (nth 1 buffer-md))
-
-        ;; Note: we're still in the edit buffer window
         (new-rectpara (rectpara-edit-extract-rectpara))
         )
 
@@ -745,30 +768,40 @@ If increased in size, opens up white space as needed."
     ;;   if the rectpara has grown during editing, must
     ;;   open up whitespace in the target buffer
     (let* (
+           ;; the original coordinates, before edit
            (left  (nth 0 coords))
            (top   (nth 1 coords))
            (right (nth 2 coords))
            (bot   (nth 3 coords))
 
            (new-width (rectpara-width-rectangle new-rectpara))
+;;           (new-width (1+ (rectpara-width-rectangle new-rectpara)))
            (old-width (1+ (- right left)))
+;;           (old-width (- right left))
 
            (new-height (length new-rectpara))
            (old-height (1+ (- bot top)))
 
            (delta-height (- new-height old-height ))
            (delta-width  (- new-width old-width ))
+
+           (new-bot   (+ bot delta-height))
+           (new-right (+ right delta-width))
           )
 
-      (if (> new-width old-width)
-          (rectpara-deal-with-horizontal-expansion new-width old-width coords) ) ;; TODO pass deltas
+;;      (if (> new-width old-width) ;; i.e. (> delta-width 0)
+      (if (> (1+ delta-width) 0) ;; EXPERIMENTAL MARKER37
+          (rectpara-deal-with-horizontal-expansion delta-width coords) )
 
-      (if (> new-height old-height)
+      (if (> new-height old-height) ;; i.e. (> delta-height 0)
 ;;          (rectpara-deal-with-vertical-expansion delta-height delta-width coords) )
 ;;          (rectpara-deal-with-vertical-expansion-OLDSTYLE delta-height delta-width coords) )
           (rectpara-deal-with-vertical-expansion-EXPERIMENTAL delta-height delta-width coords) )
 
       (rectpara-clear-rectangle coords)
+
+      ;; autovivify spaces through-out area of new rectpara (e.g. append newlines)
+      (rectpara-move-to-x-y-location new-right new-bot)
 
       ;; TODO might be better to do this conditionally:
       ;;      if there's a problem warn and re-open the edit window again
@@ -883,7 +916,7 @@ Returns list of coords: x1 y1 x2 y2."
 
 ;; used by "done"
 ;; nickname: "horizontal"
-(defun rectpara-deal-with-horizontal-expansion (new-width old-width coords)
+(defun rectpara-deal-with-horizontal-expansion (delta-width coords)
   "Juggle things out of the way horizontally so expanded rectpara will fit."
   ;; Looks to the right and snags anything in the way of the rectpara
   ;; insert, then puts the rectparas back in locations shifted over
@@ -895,13 +928,12 @@ Returns list of coords: x1 y1 x2 y2."
           (right (nth 2 coords))
           (bot   (nth 3 coords))
 
-          (delta (- new-width old-width ))
-          (new-right (+ right delta))
+          (new-right (+ right delta-width))
 
           (padding 3)
-          (horizon (+ delta padding))
+          (horizon (+ delta-width padding))
 
-            open-field overlap shift
+            open-field overlap shiftover
             ;; temp-hidden-rectparas
             )
 
@@ -914,19 +946,18 @@ Returns list of coords: x1 y1 x2 y2."
     (setq open-field
           (rectpara-open-how-far-over right horizon top bot))
 
-    ;; difference in open-field and expansion is how much we need to open
-    ;; (( but that's not this, is it? TODO REALLY ))
-    (setq overlap (- new-right (+ open-field right)))
+    ;; difference in open-field and expansion is how much we need to open  (? TODO)
+;;     (setq overlap (- new-right (+ open-field right)))
+;;     (setq shift (+ overlap padding))
+    (setq shiftover (- (+ delta-width padding) open-field))
 
-    (setq shift (+ overlap padding))
-
-    (cond ( (> shift 0 )  ;; don't try to do anything unless something needs to be done
+    (cond ( (> shiftover 0 )  ;; don't try to do anything unless something needs to be done
 
            ;; Stores extracted rectparas in global var: rectpara-stash-plist
            (rectpara-extract-rectpars-to-right coords horizon)
 
            ;; Pulls rectparas back in from the global rectpara-stash-plist
-           (rectpara-restore-rectparas-shifted-over  shift )
+           (rectpara-restore-rectparas-shifted-over  shiftover )
            )
           )))
 
@@ -1001,6 +1032,7 @@ and a rectangle, i.e. a list of lines of text."
 
            rectpara-contents  found-coords
            )
+
       ;; loop vertically from top to bottom, looking to the right of the rectpara
       (rectpara-move-row (- top farther))
       (while (<= (rectpara-current-row) (+ bot farther) )
@@ -1010,16 +1042,8 @@ and a rectangle, i.e. a list of lines of text."
           ;; move to the column just outside the given rectpara coords
           (rectpara-move-column (1+ right))
 
-          ;; on each line, crawl forward looking for non-space
-          (catch 'OUT
-            (while (<= (rectpara-current-column) absolute-horizon )
-              (cond ( (not (looking-at " "))  ;; maybe better: "[ \t]"
-                      (setq found-coords (rectpara-find-rectpara-boundaries))
-                      (throw 'OUT nil) ) )
-              ;; two steps forward and one back (to autovivify spaces)
-              (picture-forward-column  2)
-              (picture-backward-column 1)
-              ))
+          (setq found-coords
+                (rectpara-find-rectpara-to-right absolute-horizon))
 
           ;; using global plist stash to accumulate a unique list of rectparas
           (cond ( found-coords
@@ -1035,6 +1059,33 @@ and a rectangle, i.e. a list of lines of text."
           (picture-move-down 1)
           ))
     rectpara-stash-plist ))
+
+;;
+
+(defun rectpara-find-rectpara-to-right (absolute-horizon)
+  "Look for a rectpara to the right, somewhere before column ABSOLUTE-HORIZON.
+If found, returns the list of coords of the rectpara."
+  (interactive) ;; DEBUG
+  (let ( found-coords )
+    ;; on each line, crawl forward looking for non-space
+    (catch 'OUT
+      (while (<= (rectpara-current-column) absolute-horizon )
+        (cond
+         ( (eolp)
+           (throw 'OUT nil)
+           )
+         ( (not (looking-at " "))
+           (setq found-coords (rectpara-find-rectpara-boundaries))
+           (throw 'OUT found-coords) ) )
+        ;; two steps forward and one back (to autovivify spaces)
+        (picture-forward-column  2)
+        (picture-backward-column 1)
+        ))
+    found-coords))
+
+
+
+
 
 ;; used by rectpara-deal-with-horizontal-expansion
 (defun rectpara-restore-rectparas-shifted-over ( &optional rightshift plist )
@@ -1535,13 +1586,17 @@ The column and row numbers are 1 indexed."
 ;;========
 ;; TODO
 
+;; This one is done, but needs debugging (as does the
+;; horizontal):
+
+;; ;; o  code moves things out of the way if an edited rectpara
+;; ;;    gets bigger, but it does it a little differently for
+;; ;;    horizontal and vertical expansion: make the vertical
+;; ;;    (old code) consistent with the horizontal (new code).
+
+
 ;; o  flexible keymap definition functions: give user choice
 ;;    of prefix, document in setup.
-
-;; o  code moves things out of the way if an edited rectpara
-;;    gets bigger, but it does it a little differently for
-;;    horizontal and vertical expansion: make the vertical
-;;    (old code) consistent with the horizontal (new code).
 
 ;; o  would be useful to shut off expansion handling, (defcustom)
 ;;    and simply refuse to complete a return from edit
@@ -1549,7 +1604,7 @@ The column and row numbers are 1 indexed."
 
 ;; o  The edit buffers really should be saved to file locations
 ;;    in /tmp so it doesn't keep beeping at you when you do C-x C-s
-;;    out of habit.
+;;    out of habit.  (( this could be a useful feature for tests! ))
 
 ;; o  should close open rectpara edit buffers when done with them
 
