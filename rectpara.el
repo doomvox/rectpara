@@ -345,7 +345,6 @@ this first, then use: rectpara-move-row."
 
 ;; Used by: "select", "vertical", "horizontal"...
 ;;  rectpara-open-how-far-over, rectpara-move-to-x-y-location, rectpara-extract-rectpars-to-right
-
 (defun rectpara-move-row (target-row)
   "Move to a given TARGET-ROW, numbering from 1.
 This moves down through the current column, autovivfying spaces
@@ -775,6 +774,7 @@ If increased in size, opens up white space as needed."
            (bot   (nth 3 coords))
 
            (new-width (rectpara-width-rectangle new-rectpara))
+;; EXPERIMENTAL MARKER37
 ;;           (new-width (1+ (rectpara-width-rectangle new-rectpara)))
            (old-width (1+ (- right left)))
 ;;           (old-width (- right left))
@@ -789,14 +789,11 @@ If increased in size, opens up white space as needed."
            (new-right (+ right delta-width))
           )
 
-;;      (if (> new-width old-width) ;; i.e. (> delta-width 0)
       (if (> (1+ delta-width) 0) ;; EXPERIMENTAL MARKER37
           (rectpara-deal-with-horizontal-expansion delta-width coords) )
 
-      (if (> new-height old-height) ;; i.e. (> delta-height 0)
-;;          (rectpara-deal-with-vertical-expansion delta-height delta-width coords) )
-;;          (rectpara-deal-with-vertical-expansion-OLDSTYLE delta-height delta-width coords) )
-          (rectpara-deal-with-vertical-expansion-EXPERIMENTAL delta-height delta-width coords) )
+      (if (> delta-height 0) ;; no need for 1+
+          (rectpara-deal-with-vertical-expansion delta-height delta-width coords) )
 
       (rectpara-clear-rectangle coords)
 
@@ -965,7 +962,7 @@ Returns list of coords: x1 y1 x2 y2."
 (defun rectpara-open-how-far-over (col horizon top bot)
   "Find amount of open space next to column COL, between rows TOP and BOT.
 Looks no further than the HORIZON (a limited number of columns).
-Note: the maximum return value is the horizon." ;; horizon includes padding
+Note: the maximum return value is the horizon."
   (save-excursion
     (let* (
             (i 0)   ;; loop indicie: a horizontal count from the column COL
@@ -1060,8 +1057,6 @@ and a rectangle, i.e. a list of lines of text."
           ))
     rectpara-stash-plist ))
 
-;;
-
 (defun rectpara-find-rectpara-to-right (absolute-horizon)
   "Look for a rectpara to the right, somewhere before column ABSOLUTE-HORIZON.
 If found, returns the list of coords of the rectpara."
@@ -1082,10 +1077,6 @@ If found, returns the list of coords of the rectpara."
         (picture-backward-column 1)
         ))
     found-coords))
-
-
-
-
 
 ;; used by rectpara-deal-with-horizontal-expansion
 (defun rectpara-restore-rectparas-shifted-over ( &optional rightshift plist )
@@ -1136,13 +1127,12 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
           )))))))
 
 ;;;--------
-;;; vertical collisions, new handling EXPERIMENTAL
+;;; vertical collisions
 
 ;; used by "done"
-;; nickname: "vertical" (newstyle, experimental)
+;; nickname: "vertical" (newstyle)
 
-;;;;; (defun rectpara-deal-with-vertical-expansion (new-height old-height coords )
-(defun rectpara-deal-with-vertical-expansion-EXPERIMENTAL (delta-height delta-width coords )
+(defun rectpara-deal-with-vertical-expansion (delta-height delta-width coords )
   "Juggle things out of the way vertically so expanded rectpara will fit."
   ;; uses a recursive check similar to "horizontal"
   (let* (
@@ -1165,28 +1155,14 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
     ;; clear the global stash
     (setq rectpara-stash-plist () )
 
-    ;; (rectpara-move-column top) ;; just being neat.
     (rectpara-move-row bot)
 
     (setq open-field
-;;          (rectpara-open-how-far-down delta-height left new-right))
-;;          (rectpara-open-how-far-down delta-height left new-right))
           (rectpara-open-how-far-down horizon left new-right))
 
-    ;; difference in open-field and expansion is how much we need to open
-    ;; (( but that's NOT this is it? TODO REALLY ))
-    ;; (setq overlap (- new-bot (+ open-field bot)))
-    ;; These are both relative numbers:
-    ;;   expansion: delta-height
-    ;;   room:      open-field
-
+    ;; difference in open-expansion and field is how much we need to open
+    ;; (note: delta-height and open-field are both relative)
     (setq shiftdown (- (+ delta-height padding) open-field))
-
-    ;; positive means we got to move stuff; experimentally can
-    ;; see that we need a shiftdown that's a little bigger, so I
-    ;; add padding, but it could be that *this* no reason this
-    ;; padding need be the same as the other
-
     (cond ( (> shiftdown 0 )
            ;; Stores extracted rectparas in global var: rectpara-stash-plist
            (rectpara-extract-rectpars-down-below coords horizon)
@@ -1196,6 +1172,77 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
            )
           )))
 
+;; used by "vertical" (both the newstyle and the old)
+(defun rectpara-open-how-far-down (checkdistance left right &optional staythere)
+  "Looks downward to see how far until the end of open space.
+From the current row, scans down through the given CHECKDISTANCE,
+verifying that there is whitespace between the LEFT and RIGHT
+boundaries, returning the end location.  Note: the maximum return
+value is the CHECKDISTANCE.  As a side-effect, creates lines at
+the bottom of the buffer if the region we're checking extends
+down past it.  If option STAYTHERE is t, will not restore point."
+  (let ( (saveloc (point))
+         (i 0)
+         (limit checkdistance)
+        )
+    (catch 'UP
+      (while (<= i checkdistance)
+        (let ( (line
+                (rectpara-get-line-segment-as-string left right))
+               )
+          (if (not (string-match "^[ ]*$" line))
+              (throw 'UP (setq limit i))
+            )
+
+          ;; advance to next line, creating a blank line if at end-of-buffer
+          (picture-move-down 2)
+          (picture-move-up 1)
+          (setq i (1+ i))
+          )))
+    ;; (setq limit (1+ i))  ;;; Why plus one?  Maybe try without but with "<=" comparison...
+
+    (unless staythere
+      (goto-char saveloc))
+    limit))
+
+;; used by rectpara-open-how-far-down
+;;    and in turn by: rectpara-deal-with-vertical-expansion
+(defun rectpara-get-line-segment-as-string (left right &optional line-number)
+  "Gets the requested piece of a line as a string.  Default: current line.
+Returns the substring between LEFT and RIGHT.  When the string is
+too short will pad with spaces-- this assists in faking an infinite quarter-plane."
+  ;; This routine may seem larger than it should be: one complication is
+  ;; it works with the column numbers, not the absolute character count,
+  ;; the other is the space infill code.
+  (let ( (saveloc (point) )
+         line-start line-end line segment )
+
+    (if line-number
+        (goto-line line-number))
+
+    ;; snag the entire line from the buffer
+    (picture-beginning-of-line)
+    (setq line-start (point))
+    (picture-end-of-line)
+    (setq line-end (point))
+    (setq line
+          (buffer-substring line-start line-end))
+
+    ;; pad the line out to column indicated by 'right'
+    (setq needed-padding
+          (- right (length line) ))
+    (if (> needed-padding 0)
+        (setq line
+              (concat line
+                      (make-string needed-padding ?\ )
+                      )) )
+
+    ;; get the requested segment
+    (setq segment
+          (substring line left right))
+
+    (goto-char saveloc)
+    segment))
 
 
 ;; used by "vertical" (rectpara-deal-with-vertical-expansion)
@@ -1246,7 +1293,6 @@ and a rectangle, i.e. a list of lines of text."
           ))
     rectpara-stash-plist ))
 
-
 (defun rectpara-find-next-rectpara-down-this-column (absolute-horizon)
   "Crawls down current column looking for non-space.
 Returns the coords of the rectpara found at that point.  Required
@@ -1269,8 +1315,6 @@ should stop."
         (picture-move-up   1)
         ))
   found-coords))
-
-
 
 ;; used by rectpara-deal-with-vertical-expansion
 (defun rectpara-restore-rectparas-shifted-down ( &optional downshift plist )
@@ -1320,135 +1364,81 @@ PLIST defaults to rectpara-stash-plist. DOWNSHIFT defaults to 0."
               (picture-insert-rectangle contents)
           )))))))
 
-
-
-;;;------
-;;; vertical collisons (old style)
-
-;; used by "done"
-;; nickname: "vertical oldstyle"
-
-
-;;;; (defun rectpara-deal-with-vertical-expansion-OLDSTYLE (new-height old-height coords)
-(defun rectpara-deal-with-vertical-expansion-OLDSTYLE (delta-height delta-width coords )
-  "Juggle things out of the way so expanded rectpara will fit."
-  ;; if the new rectangle has gotten taller we temporarily
-  ;; hide all other rectparas adjacent to the old bottom
-  ;; edge, insert blanks lines, then restore the adjacent
-  ;; rectparas where they were.
-  (let* (
-         (left  (nth 0 coords))
-         ;; (top   (nth 1 coords))
-         (right (nth 2 coords))
-         (bot   (nth 3 coords))
-
-         ;;;;; (delta-height (- new-height old-height))
-          (new-bot (+ bot delta-height))
-          (new-right (+ right delta-width ))
-
-           toe-room
-           blank-lines-needed
-           temp-hidden-rectparas
-           empirical-correction-shift
-         )
-
-      (rectpara-move-row bot)
-      (setq toe-room
-            (rectpara-open-how-far-down delta-height left right))
-
-      ;; TODO hack:
-      ;; when vertical expansion is 1, 2 works here, 3 works otherwise.
-      (if (> delta-height 1)
-          (setq empirical-correction-shift 3) ;
-        (setq empirical-correction-shift 2))
-
-      ;; difference in toe-room and expansion is how much we need to open
-      (setq blank-lines-needed
-            (+ (- delta-height toe-room) empirical-correction-shift) )
-
-      (setq temp-hidden-rectparas
-            (rectpara-extract-rectpars-with-coords-on-line))
-      (picture-open-line  blank-lines-needed) ;; insert blank lines
-      (rectpara-restore-rectparas-from-list temp-hidden-rectparas)
-    ))
-
-;; used by "vertical" (both oldstyle and new, at present)
-(defun rectpara-open-how-far-down (checkdistance left right &optional staythere)
-  "Looks downward to see how far until the end of open space.
-From the current row, scans down through the given CHECKDISTANCE,
-verifying that there is whitespace between the LEFT and RIGHT
-boundaries, returning the end location.  Note: the maximum return
-value is the CHECKDISTANCE.  As a side-effect, creates lines at
-the bottom of the buffer if the region we're checking extends
-down past it.  If option STAYTHERE is t, will not restore point."
-  (let ( (saveloc (point))
-         (i 0)
-         (limit checkdistance)
-        )
-    (catch 'UP
-      (while (<= i checkdistance)
-        (let ( (line
-                (rectpara-get-line-segment-as-string left right))
-               )
-          (if (not (string-match "^[ ]*$" line))
-              (throw 'UP (setq limit i))
-            )
-
-          ;; advance to next line, creating a blank line if at end-of-buffer
-          (picture-move-down 2)
-          (picture-move-up 1)
-          (setq i (1+ i))
-          )))
-    ;; (setq limit (1+ i))  ;;; Why plus one?  Maybe try without but with "<=" comparison...
-
-    (unless staythere
-      (goto-char saveloc))
-
-    limit))
-
-;; used by rectpara-open-how-far-down
-;;    and in turn by: rectpara-deal-with-vertical-expansion
-(defun rectpara-get-line-segment-as-string (left right &optional line-number)
-  "Gets the requested piece of a line as a string.  Default: current line.
-Returns the substring between LEFT and RIGHT.  When the string is
-too short will pad with spaces-- this assists in faking an infinite quarter-plane."
-  ;; This routine may seem larger than it should be: one complication is
-  ;; it works with the column numbers, not the absolute character count,
-  ;; the other is the space infill code.
-  (let ( (saveloc (point) )
-         line-start line-end line segment )
-
-    (if line-number
-        (goto-line line-number))
-
-    ;; snag the entire line from the buffer
-    (picture-beginning-of-line)
-    (setq line-start (point))
-    (picture-end-of-line)
-    (setq line-end (point))
-    (setq line
-          (buffer-substring line-start line-end))
-
-    ;; pad the line out to column indicated by 'right'
-    (setq needed-padding
-          (- right (length line) ))
-    (if (> needed-padding 0)
-        (setq line
-              (concat line
-                      (make-string needed-padding ?\ )
-                      )) )
-
-    ;; get the requested segment
-    (setq segment
-          (substring line left right))
-
-    (goto-char saveloc)
-    segment))
-
 ;;--------
 ;; rectpara extraction, restore, removal...
 
-;; used by "vertical"
+;; used by "vertical" indirectly, via rectpara-extract-rectpars-with-coords-on-line
+(defun rectpara-extract-rectpara-with-coords ()
+  "Returns current rectpara along with a list of x-y coordinates, clears the original rectangle"
+  (let (saveloc coords start-end start end rectpara)
+    (setq coords (rectpara-find-rectpara-boundaries))
+    (setq rectpara
+          (rectpara-extract-rectpara-at-coords coords))
+    (list rectpara coords)))
+
+;; used by "vertical" indirectly, via rectpara-extract-rectpara-with-coords (see above)
+;; and by "horizontal", via rectpara-extract-rectpars-to-right
+(defun rectpara-extract-rectpara-at-coords (coords)
+  "Given COORDS returns a copy of rectpara as list of strings."
+    (setq start-end (rectpara-convert-coords-to-start-end coords))
+    (setq start (car start-end))
+    (setq end (nth 1 start-end))
+    (setq rectpara (extract-rectangle start end))  ;; though extract implies removal this doesn't...
+    (clear-rectangle start end)                    ;; we have to do the removal ourselves.
+    rectpara )
+
+;; used by "edit"
+(defun rectpara-extract-rectpara-with-coords-and-rel-pos ()
+  "Returns current rectpara along with a list of x-y coordinates, clears the original rectangle"
+  (let (curloc coords start-end start end rectpara pos-pair)
+    (setq curloc (point))
+    (setq pos-pair (rectpara-x-and-y-from-pos curloc))
+    (setq coords (rectpara-find-rectpara-boundaries))
+    (setq rectpara
+          (rectpara-extract-rectpara-at-coords coords))
+    (list rectpara coords pos-pair)))
+
+;; Used by "edit" via rectpara-extract-rectpara-with-coords-and-rel-pos,
+(defun rectpara-x-and-y-from-pos (&optional pos)
+  "Given position POS, return column and row pair.
+The argument pos defaults to the current point.
+The column and row numbers are 1 indexed."
+  (let ( (saveloc (point) )
+         column row
+         )
+    (unless pos
+      (setq pos saveloc))
+
+    (goto-char pos)
+    (setq column (1+ (current-column)))
+    (setq row (rectpara-current-row))
+
+    (goto-char saveloc)
+    (list column row) ;; col/row seems backwards, but convention is x/y
+  ))
+
+
+;; unused: was used by oldstyle "vertical"
+(defun rectpara-restore-rectparas-from-list (big-list)
+  "Restore the rectparas in the given list"
+   (interactive)
+   (let (coords rectpara x1 y1)
+     (save-excursion
+       (while big-list
+         (setq coords (car (cdr (car big-list))))
+
+         (setq x1 (nth 0 coords))
+         (setq y1 (nth 1 coords))
+;;        (setq x2 (nth 2 coords))
+;;        (setq y2 (nth 3 coords))
+
+         (rectpara-move-to-x-y-location-lite x1 y1)
+         (setq rectpara (car (car big-list)))
+         (picture-insert-rectangle rectpara)
+         (setq big-list (cdr big-list))))))
+
+
+;; unused: was used by oldstyle of "vertical"
 (defun rectpara-extract-rectpars-with-coords-on-line ()
    "Looks for all rectparas intersecting the current line and
 removes them, returns them with their coordinates"
@@ -1473,92 +1463,6 @@ removes them, returns them with their coordinates"
            (picture-forward-column 1)))
        result-list)))
 
-;; used by "vertical"
-(defun rectpara-restore-rectparas-from-list (big-list)
-  "Restore the rectparas in the given list"
-   (interactive)
-   (let (coords rectpara x1 y1)
-     (save-excursion
-       (while big-list
-         (setq coords (car (cdr (car big-list))))
-
-         (setq x1 (nth 0 coords))
-         (setq y1 (nth 1 coords))
-;;        (setq x2 (nth 2 coords))
-;;        (setq y2 (nth 3 coords))
-
-         (rectpara-move-to-x-y-location-lite x1 y1)
-         (setq rectpara (car (car big-list)))
-         (picture-insert-rectangle rectpara)
-         (setq big-list (cdr big-list))))))
-
-
-;; used by "vertical" indirectly, via rectpara-extract-rectpars-with-coords-on-line
-(defun rectpara-extract-rectpara-with-coords ()
-  "Returns current rectpara along with a list of x-y coordinates, clears the original rectangle"
-  (let (saveloc coords start-end start end rectpara)
-    (setq coords (rectpara-find-rectpara-boundaries))
-    (setq rectpara
-          (rectpara-extract-rectpara-at-coords coords))
-    (list rectpara coords)))
-
-;; used by "vertical" indirectly, via rectpara-extract-rectpara-with-coords (see above)
-;; and by "horizontal", via rectpara-extract-rectpars-to-right
-(defun rectpara-extract-rectpara-at-coords (coords)
-  "Given COORDS returns a copy of rectpara as list of strings."
-    (setq start-end (rectpara-convert-coords-to-start-end coords))
-    (setq start (car start-end))
-    (setq end (nth 1 start-end))
-    (setq rectpara (extract-rectangle start end))  ;; though extract implies removal this doesn't...
-    (clear-rectangle start end)                    ;; we have to do the removal ourselves.
-    rectpara )
-
-
-;; unused
-(defun rectpara-remove-rectparas-in-list (big-list)
-  "Actually remove the rectparas in the given list"
-   (let (coords rectpara start-end start end)
-     (while big-list
-       (setq coords (car (cdr (car big-list))))
-
-       (setq start-end (rectpara-convert-coords-to-start-end coords))
-       (setq start (car start-end))
-       (setq end (nth 1 start-end))
-
-       (clear-rectangle start end)
-
-       (setq big-list (cdr big-list)))))
-
-;; used by "edit"
-(defun rectpara-extract-rectpara-with-coords-and-rel-pos ()
-  "Returns current rectpara along with a list of x-y coordinates, clears the original rectangle"
-  (let (curloc coords start-end start end rectpara pos-pair)
-    (setq curloc (point))
-    (setq pos-pair (rectpara-x-and-y-from-pos curloc))
-    (setq coords (rectpara-find-rectpara-boundaries))
-    (setq rectpara
-          (rectpara-extract-rectpara-at-coords coords))
-    (list rectpara coords pos-pair)))
-
-;; Used by rectpara-extract-rectpara-with-coords-and-rel-pos,
-;; and in turn by "edit"
-(defun rectpara-x-and-y-from-pos (&optional pos)
-  "Given position POS, return column and row pair.
-The argument pos defaults to the current point.
-The column and row numbers are 1 indexed."
-  (let ( (saveloc (point) )
-         column row
-         )
-    (unless pos
-      (setq pos saveloc))
-
-    (goto-char pos)
-    (setq column (1+ (current-column)))
-    (setq row (rectpara-current-row))
-
-    (goto-char saveloc)
-    (list column row) ;; col/row seems backwards, but convention is x/y
-  ))
 
 ;;---------
 ;; rectpara copy utilities
