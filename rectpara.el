@@ -999,20 +999,24 @@ Returns list of coords: x1 y1 x2 y2."
           (padding 3)
           (horizon (+ delta-width padding))
 
-            open-field shiftover
-            ;; temp-hidden-rectparas
-            )
+          (stash () )
+
+          open-field shiftover
+          )
+  ;; TODO NOMORE
     (setq rectpara-stash-plist () ) ;; clear the global stash
     (rectpara-move-column right)
     (setq open-field
           (rectpara-open-how-far-over right horizon top bot))
     (setq shiftover (- (+ delta-width padding) open-field))
     (cond ( (> shiftover 0 )
-           ;; Stores extracted rectparas in global var: rectpara-stash-plist
-           (rectpara-extract-rectpars-to-right coords horizon)
+        ;; TODO NOMORE Stores extracted rectparas in global var: rectpara-stash-plist
+            (setq stash (cons
+                         (rectpara-extract-rectpars-to-right coords horizon)
+                         stash))
 
-           ;; Pulls rectparas back in from the global rectpara-stash-plist
-           (rectpara-restore-rectparas-shifted-over  shiftover )
+        ;; TODO NOMORE Pulls rectparas back in from the global rectpara-stash-plist
+           (rectpara-restore-rectparas-shifted-over  shiftover  stash)
            )
           )))
 
@@ -1195,10 +1199,12 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
           (padding 2)
           (horizon (+ delta-height padding))
 
-          open-field overlap shiftdown
-          ;;; temp-hidden-rectparas
+          (stash () )
+
+          open-field shiftdown
           )
 
+    ;; TODO NOMORE
     ;; clear the global stash
     (setq rectpara-stash-plist () )
 
@@ -1211,11 +1217,13 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
     ;; (note: delta-height and open-field are both relative)
     (setq shiftdown (- (+ delta-height padding) open-field))
     (cond ( (> shiftdown 0 )
-           ;; Stores extracted rectparas in global var: rectpara-stash-plist
-           (rectpara-extract-rectpars-down-below coords horizon)
+    ;; TODO NOMORE           ;; Stores extracted rectparas in global var: rectpara-stash-plist
+            (setq stash (cons
+                         (rectpara-extract-rectpars-down-below coords horizon)
+                         stash))
 
-           ;; Pulls rectparas back in from the global rectpara-stash-plist
-           (rectpara-restore-rectparas-shifted-down  shiftdown )
+    ;; TODO NOMORE           ;; Pulls rectparas back in from the global rectpara-stash-plist
+           (rectpara-restore-rectparas-shifted-down  shiftdown  stash)
            )
           )))
 
@@ -1308,6 +1316,8 @@ and a rectangle, i.e. a list of lines of text."
            (bot   (nth 3 coords))
            (absolute-horizon (+ bot horizon ))
            (farther 1) ;; need to peek left and right a little farther to get everything.
+           (stash ())
+
            ;; (rp-count 0) ;; DEBUG
            rectpara-contents  found-coords
            )
@@ -1318,23 +1328,29 @@ and a rectangle, i.e. a list of lines of text."
           (rectpara-move-row (1+ bot))
           (setq found-coords
                 (rectpara-find-next-rectpara-down-this-column absolute-horizon))
-          ;; using global plist stash to accumulate a unique list of rectparas
+;;TODO NOMORE          ;; using global plist stash to accumulate a unique list of rectparas
           (cond ( found-coords
                   (let* ( (coords-str (mapconcat 'number-to-string found-coords "-") ) )
                     (setq rectpara-contents (rectpara-extract-rectpara-at-coords found-coords) )
-                    (setq rectpara-stash-plist
-                          (plist-put rectpara-stash-plist (intern coords-str) rectpara-contents))
+;;                     (setq rectpara-stash-plist
+;;                           (plist-put rectpara-stash-plist (intern coords-str) rectpara-contents))
+                    (setq stash
+                          (plist-put stash (intern coords-str) rectpara-contents))
 
                     ;; (setq rp-count (1+ rp-count))
                     ;; (if (> rp-count 1000)
                     ;;    (error "More than 1000 rps in stash: WTF?")) ;; DEBUG
 
                     ;; recursive call to keep looking below the found rectpara
-                    (rectpara-extract-rectpars-down-below found-coords horizon)
+                    (setq stash (cons
+                                 (rectpara-extract-rectpars-down-below found-coords horizon)
+                                 stash))
+
                     )))
           (picture-forward-column  1)
           ))
-    rectpara-stash-plist ))
+    ;; rectpara-stash-plist
+    stash ))
 
 (defun rectpara-find-next-rectpara-down-this-column (absolute-horizon)
   "Crawls down current column looking for non-space.
@@ -1547,6 +1563,8 @@ Relative paths are converted to absolute, using the current
 
 ;;========
 ;; TODO
+
+;; o  fix the ugliness of a global stash.  doesn't get anything.
 
 ;; o  would be useful to shut off expansion handling, (defcustom)
 ;;    and simply refuse to complete a return from edit
