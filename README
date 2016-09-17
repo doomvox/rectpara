@@ -1,0 +1,36 @@
+rectpara.el is a system to work on blocks of text layed-out
+roughly as rectangles. I call these "rectparas" for "rectangular
+paragraphs".  It contains two modes, rectpara-mode (a variant of
+picture-mode), and a secondary mode, rectpara-edit-mode (a
+variant of text-mode).  The general idea is you select a rectpara
+you need to change, the system extracts it from the original
+buffer, and moves it to an edit buffer, then when done you return
+it to the original location.  The system detects automatically if
+other things need to be moved around to prevent to new version
+from overwriting some existing text.
+
+DOCUMENTATION
+
+Online documentation is available at:
+
+  http://obsidianrook.com/rectpara
+
+There are also notes included inside the rectpara.el file.
+
+INSTALLATION
+
+Quoting from rectpara.el
+
+;; Installation and set-up:
+;;  Put the rectpara.el file into a location in your load-path,
+;;  and add something like the following to your ~/.emacs
+;;  (this uses the single character prefix I prefer, Alt-o):
+
+;;    (require 'rectpara)
+;;    (global-unset-key "\M-o")   ;; I want this, facemenu.el can't have it
+;;    (rectpara-standard-setup  (kbd "M-o") )
+
+## Copyright 2002, 2016 Joseph Brenner
+##
+## Author: doom@kzsu.stanford.edu
+## Keywords:
