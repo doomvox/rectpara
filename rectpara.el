@@ -1,5 +1,5 @@
-;; rectpara.el         Fri  December 20, 2002  22:10
-;;               Rev:  Sat  August   27, 2016  10:20
+;; rectpara.el            Fri  December  20, 2002  22:10
+;;                  Rev:  Mon  September 19, 2016  17:40
 
 ;; rectpara-mode is a variant of picture-mode to work on blocks of text layed-out
 ;; roughly as rectangles. I call these "rectparas" for "rectangular paragraphs".
@@ -9,10 +9,10 @@
 ;;   For some time
 ;;   I've been inclined
 ;;   to use emacs
-;;   picture-mode           Using small,
-;;   to write things        floating        Which I
-;;   like this...           rectangular     tend to call
-;;                          paragraphs.     rectparas.
+;;   picture-mode         Using small,
+;;   to write things      floating        Which I
+;;   like this...         rectangular     tend to call
+;;                        paragraphs.     rectparas.
 ;;     I've always
 ;;     wanted better
 ;;     tools to do
@@ -21,27 +21,31 @@
 ;;     to write a            about 10 years
 ;;     mode for it.          to get to it.
 ;;
-;;      This is a major         (And another 10
-;;      mode, derived            to publish it.)
-;;      from picture-mode
+;;                           (And another 10
+;;                           to publish it.)
+;;
 
-
-;; The rectpara-edit-rectpara command extracts one of those rectparas
+;; The rectpara-edit-at-point command extracts one of those rectparas
 ;; and temporarily moves it to a separate window in rectpara-edit-mode
 ;; (which is derived from text-mode).
 
+;; The central motivation is to do work on "The Doomfiles",
+;; currently at
+;;    http://obsidianrook.com/doomfiles.
 
-;; An early name for rectpara.el was doomfile.el, because it's
-;; original purpose was to work on "The Doomfiles", currently at
-;; http://obsidianrook.com/doomfiles.
-
-;; Installation:
+;; Installation and set-up:
 ;;  Put the rectpara.el file into a location in your load-path,
 ;;  and add something like the following to your ~/.emacs
-;;  (this uses the single char prefix I prefer, Alt-o):
+;;  (this uses the single character prefix I prefer, Alt-o):
 ;;    (require 'rectpara)
 ;;    (global-unset-key "\M-o")   ;; I want this, facemenu.el can't have it
-;;    (rectpara-standard-setup  (kbd "M-o") )
+;;    (rectpara-standard-setup  "\M-o")
+
+;; With no argument the key prefix will be "C-c ;" (control-C semicolon):
+;;   (rectpara-standard-setup)
+
+;; rectpara-standard-setup also associates files with a standard
+;; extension of *.rect with rectpara-mode.
 
 ;; Example use:
 ;;  In a file containing text like the above rectpara examples:
@@ -81,7 +85,6 @@ Will be created if does not already exist.
 Default: a sub-directory named \".rectpara\" in the user's
 home directory.")
 
-;; TODO get rid of this junk:
 ;; Having a global (really, buffer local) for this makes it a
 ;; little easier to write recursive routines that accumulate
 ;; rectparas without passing the intermediate results around.
@@ -103,7 +106,7 @@ home directory.")
   "Major mode for editing rectparas ('rectangular paragraphs').
 The editing commands are the same as in Picture mode, with
 some additional commands to select or edit a rectpara:
-\(\\[rectpara-select-rectpara], \\[rectpara-edit-rectpara]\).
+\(\\[rectpara-select-rectpara], \\[rectpara-edit-at-point]\).
 \\{rectpara-mode-map}"
   (use-local-map rectpara-mode-map)
   (turn-off-auto-fill)
@@ -121,22 +124,22 @@ finish and return the rectpara to the original buffer.
   (turn-on-auto-fill)
   (setq-default indent-tabs-mode nil) )
 
-(defun rectpara-standard-setup ( key-prefix )
+(defun rectpara-standard-setup ( &optional key-prefix )
   "Perform the standard set-up operations.
 Calling this is intended to be a single step to get useful
-keybindings and so on.
-If you want something different, then do it yourself."
+keybindings and so on.  KEY-PREFIX defaults to 'control-C
+semicolon' though I recommend something more convienient."
   (interactive) ;; DEBUG
-  (message (pp key-prefix))
+  (unless key-prefix (setq key-prefix "\C-c;"))
 
-  ;; Uses  *.rect as the standard rectpara file extension
+  ;; This uses *.rect as the standard rectpara file extension
   (add-to-list
    'auto-mode-alist
    '("\\.\\(rect\\)\\'" . rectpara-mode))
 
   ;; nickname: "edit"    "\M-oe"
   (define-key rectpara-mode-map
-    (format "%se" key-prefix) 'rectpara-edit-rectpara)
+    (format "%se" key-prefix) 'rectpara-edit-at-point)
 
   ;; nickname: "compose"  "\M-oc"
   (define-key rectpara-mode-map
@@ -150,7 +153,7 @@ If you want something different, then do it yourself."
   (define-key rectpara-mode-map
     (format "%s\C-c" key-prefix)  'rectpara-exit)
 
-  ;; rectpara-edit-mode-map:
+  ;; the edit mode map:
   ;; nickname: "done"
   (define-key rectpara-edit-mode-map "\C-x#"    'rectpara-edit-mode-done)
   (define-key rectpara-edit-mode-map "\C-c\C-c" 'rectpara-edit-mode-done)
@@ -696,7 +699,7 @@ current rectpara with the region active."
   ))
 
 ;; Nickname: "edit"
-(defun rectpara-edit-rectpara ( &optional edit-fill-col )
+(defun rectpara-edit-at-point ( &optional edit-fill-col )
   "Extract the current rectpara to another buffer for easy editing"
   (interactive)
   (let ( rectpara edit-buffer-name edit-buffer coords start-end start
@@ -788,7 +791,7 @@ Preserves the existing buffer name."
 Uses an initial fill-column setting of 30."
   (interactive)
   (rectpara-spaceout)
-  (rectpara-edit-rectpara 30 ) )
+  (rectpara-edit-at-point 30 ) )
 
 
 ;; nickname: "exit"
@@ -1178,32 +1181,24 @@ PLIST defaults to rectpara-stash-plist. RIGHTSHIFT defaults to 0."
 
 ;; used by "done"
 ;; nickname: "vertical" (newstyle)
-
 (defun rectpara-deal-with-vertical-expansion (delta-height delta-width coords )
   "Juggle things out of the way vertically so expanded rectpara will fit."
   ;; uses a recursive check similar to "horizontal"
-  (let* (
-          (left  (nth 0 coords))
+  (let* ( (left  (nth 0 coords))
           (top   (nth 1 coords))
           (right (nth 2 coords))
           (bot   (nth 3 coords))
 
-          ;; (delta (- new-height old-height ))
-          (new-bot (+ bot delta-height))
+          (new-bot   (+ bot   delta-height))
           (new-right (+ right delta-width ))
 
           (padding 2)
           (horizon (+ delta-height padding))
 
-          open-field overlap shiftdown
-          ;;; temp-hidden-rectparas
-          )
-
+          open-field  shiftdown )
     ;; clear the global stash
     (setq rectpara-stash-plist () )
-
     (rectpara-move-row bot)
-
     (setq open-field
           (rectpara-open-how-far-down horizon left new-right))
 
@@ -1230,24 +1225,17 @@ the bottom of the buffer if the region we're checking extends
 down past it.  If option STAYTHERE is t, will not restore point."
   (let ( (saveloc (point))
          (i 0)
-         (limit checkdistance)
-        )
+         (limit checkdistance) )
     (catch 'UP
       (while (<= i checkdistance)
-        (let ( (line
-                (rectpara-get-line-segment-as-string left right))
-               )
+        (let ( (line (rectpara-get-line-segment-as-string left right)) )
           (if (not (string-match "^[ ]*$" line))
-              (throw 'UP (setq limit i))
-            )
-
+              (throw 'UP (setq limit i)) )
           ;; advance to next line, creating a blank line if at end-of-buffer
           (picture-move-down 2)
           (picture-move-up 1)
           (setq i (1+ i))
           )))
-    ;; (setq limit (1+ i))  ;;; Why plus one?  Maybe try without but with "<=" comparison...
-
     (unless staythere
       (goto-char saveloc))
     limit))
@@ -1564,16 +1552,15 @@ Relative paths are converted to absolute, using the current
 ;; legal
 
 ;; Copyright 2016 Joseph Brenner
-;; License: GPL 2.0 (see boilerplate below)
+;; License: GPL 3.0 (see boilerplate below)
 ;;
 ;; Author: doom@kzsu.stanford.edu
 ;; Version: 1.0
 ;; X-URL: http://obsidianrook.com/rectpara/
 
-
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 ;;
 ;; This program is distributed in the hope that it will be useful,
