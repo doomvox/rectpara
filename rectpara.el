@@ -556,6 +556,7 @@ picture-mode commands, to fill-in spaces per the quarter-plane illusion."
    given the other three edge boundaries."
 ;; Uses a pattern that allows two-space right hand boundaries,
 ;; unless there's a hard-stop punctuation there, then require three-space.
+;; end-of-line also counts as a boundary
   (let ((line top)
         (col 0)
         (rp-line-end 'nil))
@@ -563,7 +564,8 @@ picture-mode commands, to fill-in spaces per the quarter-plane illusion."
     (rectpara-move-to-x-y-location-lite left top)
     (while (<= line bot)
       (while (progn ; crawl to right, look for end of this line
-               (if (looking-at "[^.?!:]  \\|[.?!:]   ") ; match 2 spaces or 3 after hard-stop
+;;               (if (looking-at "[^.?!:]  \\|[.?!:]   ") ; match 2 spaces or 3 after hard-stop
+               (if (looking-at "[^.?!:]  \\|[.?!:]   \|$") ; match 2 spaces or 3 after hard-stop
                    (setq rp-line-end (1+ (current-column))))
                (picture-forward-column  5)
                (picture-backward-column 4)
