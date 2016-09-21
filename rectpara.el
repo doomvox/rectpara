@@ -1001,8 +1001,11 @@ Returns list of coords: x1 y1 x2 y2."
 
           (new-right (+ right delta-width))
 
-          (padding 3)
-          (horizon (+ delta-width padding))
+          ;; experimentally determined padding settins
+          (padding-shiftover 1) ;; dropped from 3 to fix BUG1
+          (padding-horizon 1) ;;
+
+          (horizon (+ delta-width padding-horizon))
 
             open-field shiftover
             ;; temp-hidden-rectparas
@@ -1011,7 +1014,7 @@ Returns list of coords: x1 y1 x2 y2."
     (rectpara-move-column right)
     (setq open-field
           (rectpara-open-how-far-over right horizon top bot))
-    (setq shiftover (- (+ delta-width padding) open-field))
+    (setq shiftover (- (+ delta-width padding-shiftover) open-field))
     (cond ( (> shiftover 0 )
            ;; Stores extracted rectparas in global var: rectpara-stash-plist
            (rectpara-extract-rectpars-to-right coords horizon)

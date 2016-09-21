@@ -3,13 +3,6 @@
 Master list of known bugs and feature requests
 
 ===
-BUG
-
-Editing a rectpara and immediately calling it "done", returning
-it without modification should effectively be a no-op, but
-it sometimes moves things over to the right a little.
-===
-
 FEATURE
 
 I frequently use these picture-mode rectangle commands
