@@ -85,9 +85,9 @@ Will be created if does not already exist.
 Default: a sub-directory named \".rectpara\" in the user's
 home directory.")
 
-;; Having a global (really, buffer local) for this makes it a
+;; Having a global (really, buffer local) for this made it a
 ;; little easier to write recursive routines that accumulate
-;; rectparas without passing the intermediate results around.
+;; rectparas (no need to pass the intermediate results up the chain).
 (defvar rectpara-stash-plist ()
   "Global stash of a unique list of rectparas.")
 (make-variable-buffer-local 'rectpara-stash-plist)
@@ -95,7 +95,7 @@ home directory.")
 ;;--------
 ;; project meta-data
 
-(defvar rectpara-version "1.00"
+(defvar rectpara-version "1.01"
  "Version number of the rectpara.el elisp file.")
 
 ;;-------
@@ -372,6 +372,13 @@ Essentially, answers the question does this column look blank in this region?"
        (setq width (1+ max)) ;; plus 1 confirmed experimentally
        ))
 
+;; (rectpara-width-rectangle
+;;  '(
+;;   "Alpha"
+;;   "Ralpha"
+;;   "Blvd"
+;;   ));; returns 7,
+
 ;;--------
 ;; rectpara-move-* commands
 (defun rectpara-move-column (target-col)
@@ -465,6 +472,22 @@ Returns list of coords: x1 y1 x2 y2"
       (setq right (rectpara-find-right-boundary left top bot))
       (list left top right bot))))   ;; x1 y1, x2 y2
 
+(defun rectpara-echo-rectpara-boundaries ()
+  "Message the user about current rectpara boundaries.
+Mainly for debugging."
+  (interactive)
+  (let* (( bounder (rectpara-find-rectpara-boundaries) )
+         ( left  (nth 0 bounder) )
+         ( top   (nth 1 bounder) )
+         ( right (nth 2 bounder) )
+         ( bot   (nth 3 bounder) ) )
+    ;; Neither of these work, because this is not perl
+    ;;    (message "left: %d top: %d  right: %d  bot: %d" bounder )
+    ;;    (message "left: %d top: %d  right: %d  bot: %d" (rectpara-find-rectpara-boundaries) )
+    ;; This does work, because Randal is perl:
+    ;;    (message "left, top, right, bot: %s" (pp bounder))
+    (message "left: %d top: %d  right: %d  bot: %d" left top right bot )
+    ))
 
 ;; used by: rectpara-find-rectpara-boundaries
 (defun rectpara-find-left-boundary ()
@@ -551,7 +574,8 @@ picture-mode commands, to fill-in spaces per the quarter-plane illusion."
     loc))
 
 ;; Used by "select", "horizontal", "edit"... via rectpara-find-rectpara-boundaries
-(defun rectpara-find-right-boundary (left top bot)
+;; (defun rectpara-find-right-boundary (left top bot)
+(defun rectpara-find-right-boundary ( left top bot )
   "Find the right boundary of the current rectpara,
    given the other three edge boundaries."
 ;; Uses a pattern that allows two-space right hand boundaries,
@@ -564,8 +588,7 @@ picture-mode commands, to fill-in spaces per the quarter-plane illusion."
     (rectpara-move-to-x-y-location-lite left top)
     (while (<= line bot)
       (while (progn ; crawl to right, look for end of this line
-;;               (if (looking-at "[^.?!:]  \\|[.?!:]   ") ; match 2 spaces or 3 after hard-stop
-               (if (looking-at "[^.?!:]  \\|[.?!:]   \|$") ; match 2 spaces or 3 after hard-stop
+               (if (looking-at "[^.?!:]  \\|[.?!:]   ") ; match 2 spaces or 3 after hard-stop
                    (setq rp-line-end (1+ (current-column))))
                (picture-forward-column  5)
                (picture-backward-column 4)
@@ -578,8 +601,14 @@ picture-mode commands, to fill-in spaces per the quarter-plane illusion."
       (setq line (1+ line))
       (setq rp-line-end 'nil)
       (rectpara-move-column left))
+    ;; As written, this seems to find the point after longest line, then adds one,
+    ;; this *looks* like it might include a column of spaces in the rectpara.
+    ;; but it does not, without this an "edit" will drop the last col of text.
+    ;; Note, emacs weirdness on rectangle boundaries: the right edge is exclusive, others inclusive.
+    ;; There's also the issue that picture-mode style uses 1 indexed columns vs default emacs's 0.
     (setq col (+ col 1))
     col)))
+
 
 ;;--------
 ;; plist utilities
@@ -859,8 +888,8 @@ If increased in size, opens up white space as needed."
            (new-right (+ right delta-width))
           )
 
-      (if (> (1+ delta-width) 0) ;; adding 1 confirmed experimentally
-          (rectpara-deal-with-horizontal-expansion delta-width coords) )
+       (if (> delta-width 0)
+           (rectpara-deal-with-horizontal-expansion delta-width coords) )
 
       (if (> delta-height 0) ;; no need for 1+
           (rectpara-deal-with-vertical-expansion delta-height delta-width coords) )
@@ -1001,14 +1030,16 @@ Returns list of coords: x1 y1 x2 y2."
 
           (new-right (+ right delta-width))
 
-          ;; experimentally determined padding settins
-          (padding-shiftover 1) ;; dropped from 3 to fix BUG1
-          (padding-horizon 1) ;;
+          ;; experimentally determined padding settings (aka ugly hackery)
+          ;; it seems that both of these need to be set to the same value, and
+          ;; if less than 3 and you have issues with closing up gaps after edits
+          ;; and possible over-writes.
+          (padding-shiftover 3)
+          (padding-horizon   3)
 
           (horizon (+ delta-width padding-horizon))
 
-            open-field shiftover
-            ;; temp-hidden-rectparas
+             open-field shiftover
             )
     (setq rectpara-stash-plist () ) ;; clear the global stash
     (rectpara-move-column right)
@@ -1415,7 +1446,7 @@ PLIST defaults to rectpara-stash-plist. DOWNSHIFT defaults to 0."
   "Given COORDS returns a copy of rectpara as list of strings."
     (setq start-end (rectpara-convert-coords-to-start-end coords))
     (setq start (car start-end))
-    (setq end (nth 1 start-end))
+    (setq end   (nth 1 start-end))
     (setq rectpara (extract-rectangle start end))  ;; though extract implies removal this doesn't...
     (clear-rectangle start end)                    ;; we have to do the removal ourselves.
     rectpara )
@@ -1497,6 +1528,44 @@ removes them, returns them with their coordinates"
        result-list)))
 
 
+;;-------
+;; rectpara modification "in place"
+;;
+;; These are EXPERIMENTAL.
+
+;; STATUS: seems functional, though it feels odd that
+;; when expanding by 1 doesn't do anything, running it
+;; again won't do anything either-- in other words it
+;; feels like you should be incrementing something each
+;; time, but there's nothing to go by but the visual
+;; appearence of the rectpara
+(defun rectpara-expand-right-margin (delta)
+  "Expand current rectpara, reformatting it in place."
+  (interactive "p")
+  (unless delta (setq delta 1))
+
+  (rectpara-edit-at-point)
+  (setq fill-column (+ fill-column delta))
+  (rectpara-edit-reformat)
+  (rectpara-edit-mode-done)
+  )
+
+(defun rectpara-contract-right-margin (delta)
+  "Contract current rectpara, formatting it in place."
+  (interactive "p")
+  (unless delta (setq delta 1))
+  (rectpara-expand-right-margin (* -1 delta))
+  )
+
+;; wrapper function to ease experimentation with alternatives.
+(defun rectpara-edit-reformat ()
+  "Reformat the current paragraph."
+  (fill-paragraph) ;; TODO look into alternatives like
+                   ;;      doom-run-text-autoformat-on-region
+                   ;;      of using fill-region directly
+  )
+
+
 ;;---------
 ;; rectpara copy utilities
 ;; (unused, at present)
@@ -1559,6 +1628,7 @@ Relative paths are converted to absolute, using the current
 ;; Copyright 2016 Joseph Brenner
 ;; License: GPL 3.0 (see boilerplate below)
 ;;
+;;
 ;; Author: doom@kzsu.stanford.edu
 ;; Version: 1.0
 ;; X-URL: http://obsidianrook.com/rectpara/
@@ -1567,6 +1637,8 @@ Relative paths are converted to absolute, using the current
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
+;;
+;;   https://www.gnu.org/licenses/gpl.html
 ;;
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
