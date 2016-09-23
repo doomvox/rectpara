@@ -1,4 +1,5 @@
                                                   September 19, 2016
+                                            Rev:  September 23, 2016
 
 Master list of known bugs and feature requests
 
@@ -33,13 +34,9 @@ rectpara-kill-ring, rather than a register.
 ===
 FEATURE
 
-Common operations in finishing up the layout of rectparas
-involve a lot of edit-reformat-return cycles.  Individual
-commands should exist to move the right margin without explicitly
-invoking a rectpara-edit buffer.
-
-Another useful command would be to "balance lines": choose an
-aspect ratio that reduces the raggedness of the right margin.
+A useful rectpara formatting command would be to "balance lines":
+choose an aspect ratio that reduces the raggedness of the right
+margin.
 
 ===
 TODO
