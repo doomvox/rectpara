@@ -153,6 +153,12 @@ semicolon' though I recommend something more convienient."
   (define-key rectpara-mode-map
     (format "%s\C-c" key-prefix)  'rectpara-exit)
 
+  ;; move rectpara right margin and reformat in-place
+  (define-key rectpara-mode-map
+    (format "%s>" key-prefix)  'rectpara-expand-right-margin)
+  (define-key rectpara-mode-map
+    (format "%s<" key-prefix)  'rectpara-contract-right-margin)
+
   ;; the edit mode map:
   ;; nickname: "done"
   (define-key rectpara-edit-mode-map "\C-x#"    'rectpara-edit-mode-done)
@@ -161,6 +167,9 @@ semicolon' though I recommend something more convienient."
   (setq rectpara-archive-location
         (rectpara-fixdir rectpara-archive-location))
   )
+
+;; DEBUG
+;;  (rectpara-standard-setup  "\M-o")
 
 ;;; ========
 ;;; EDITING RECTPARAS
@@ -1531,39 +1540,82 @@ removes them, returns them with their coordinates"
 ;;-------
 ;; rectpara modification "in place"
 ;;
-;; These are EXPERIMENTAL.
 
-;; STATUS: seems functional, though it feels odd that
-;; when expanding by 1 doesn't do anything, running it
-;; again won't do anything either-- in other words it
-;; feels like you should be incrementing something each
-;; time, but there's nothing to go by but the visual
-;; appearence of the rectpara
 (defun rectpara-expand-right-margin (delta)
-  "Expand current rectpara, reformatting it in place."
-  (interactive "p")
-  (unless delta (setq delta 1))
+  "Expand current rectpara, reformatting it in place.
+The given DELTA should be either a list containing an integer,
+or nil -- this is dictated by the raw form of interactive.
+If run without a prefix argument, will try to increase the
+right margin enough to produce a layout change, with
+a prefix argument, it just does the margin change that it's told
+to do, even if that changes nothing."
+  (interactive "P") ;; need 'raw' form to distinguish no-prefix vs prefix
+  (let ( changed )
+    (cond ( delta ;; do precisely what we were told
+           (rectpara-edit-at-point)
+           (setq fill-column (+ fill-column (car delta)))
+           (rectpara-edit-reformat)
+           (rectpara-edit-mode-done)
+           )
+          (t ;; not delta
+           (setq delta 1) ;; try steadily increasing delta until it changes
+           (let (( bailout-limit 80 )) ;; bailout if nothing's happening
+             (rectpara-edit-at-point)
+             (catch 'UP
+               (while ( < delta bailout-limit )
+                 (setq fill-column (+ fill-column delta))
+                 (setq changed
+                       (rectpara-edit-reformat) ) ;; t if it changes
+                 (if changed
+                     (throw 'UP changed))
+                 ))
+             (rectpara-edit-mode-done)
+             )))))
 
-  (rectpara-edit-at-point)
-  (setq fill-column (+ fill-column delta))
-  (rectpara-edit-reformat)
-  (rectpara-edit-mode-done)
-  )
-
+;; TODO eliminate redundancy with above
 (defun rectpara-contract-right-margin (delta)
   "Contract current rectpara, formatting it in place."
-  (interactive "p")
-  (unless delta (setq delta 1))
-  (rectpara-expand-right-margin (* -1 delta))
-  )
+  (interactive "P")
 
-;; wrapper function to ease experimentation with alternatives.
+  (let ( changed )
+    (cond ( delta ;; do precisely what we were told
+           (rectpara-edit-at-point)
+           (setq fill-column (- fill-column (car delta)))
+           (rectpara-edit-reformat)
+           (rectpara-edit-mode-done)
+           )
+          (t ;; not delta
+           (setq delta 1) ;; try steadily *decreasing* delta until it changes
+           (let (( bailout-limit 80 )) ;; bailout if nothing's happening
+             (rectpara-edit-at-point)
+             (catch 'UP
+               (while ( < delta bailout-limit )
+                 (setq fill-column (- fill-column delta))
+                 (setq changed
+                       (rectpara-edit-reformat) ) ;; t if it changes
+                 (if changed
+                     (throw 'UP changed))
+                 ))
+             (rectpara-edit-mode-done)
+             )))))
+
 (defun rectpara-edit-reformat ()
-  "Reformat the current paragraph."
-  (fill-paragraph) ;; TODO look into alternatives like
-                   ;;      doom-run-text-autoformat-on-region
-                   ;;      of using fill-region directly
-  )
+  "Reformat the current paragraph.
+Returns t if the buffer contents changes."
+  (let ( before after )
+    (setq before
+          (buffer-substring (point-min) (point-max) ))
+
+    (fill-paragraph)
+    ;; TODO look into alternatives like
+    ;;      doom-run-text-autoformat-on-region
+    ;;      of using fill-region directly
+
+    (setq after
+          (buffer-substring (point-min) (point-max) ))
+
+    (not (string= before after))
+  ))
 
 
 ;;---------
