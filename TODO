@@ -2,6 +2,13 @@
                                             Rev:  September 23, 2016
 
 Master list of known bugs and feature requests
+===
+BUG2 v1.02
+
+The experimental function rectpara-move-rectpara
+has bugs in recursive collision avoidance that edit/done does not
+have.  Sometimes works, but sometimes runs two rectparas so close
+they merge.
 
 ===
 FEATURE
