@@ -70,7 +70,7 @@
 ;;-------
 ;; user settings
 
-(defvar rectpara-clean-up-edit-buffers nil
+(defvar rectpara-clean-up-edit-buffers t
   "When set to t, edit buffers will be removed when edit is done.")
 ;; (setq rectpara-clean-up-edit-buffers t)
 
@@ -95,7 +95,7 @@ home directory.")
 ;;--------
 ;; project meta-data
 
-(defvar rectpara-version "1.01"
+(defvar rectpara-version "1.02"
  "Version number of the rectpara.el elisp file.")
 
 ;;-------
@@ -399,7 +399,7 @@ Essentially, answers the question does this column look blank in this region?"
 ;;   ));; returns 7,
 
 ;;--------
-;; rectpara-move-* commands
+;; rectpara-move-* commands (for moving the cursor)
 (defun rectpara-move-column (target-col)
   "Move to a given column, numbering from 1.
 This moves across the current row, autovivifying spaces just on
@@ -996,11 +996,9 @@ Returns list of coords: x1 y1 x2 y2."
 
 ;; used by "done"
 (defun rectpara-zap-this-edit-window (rectpara-buffer)
-  "Close the currently active edit window and return to the source RECTPARA-BUFFER."
+  "Close the currently active edit window and return to the source RECTPARA-BUFFER.
+If rectpara-clean-up-edit-buffers is set to t, will kill the buffer."
   ;; This is neater behavior than just doing a (switch-to-buffer rectpara-buffer)
-  ;; TODO it just closes the window, and preserves the edit buffer.
-  ;; With greater confidence, you'd delete the edit buffer
-  ;; (could save to disk for paranoia's sake...)
   (let* ( (edit-buffer-window (selected-window))
           (buffy (buffer-name) )
           )
@@ -1625,8 +1623,6 @@ Returns t if the buffer contents changes."
     (not (string= before after))
   ))
 
-
-
 ;; EXPERIMENTAL.
 ;;  Status: rp moves are functional, but with odd bugs not present in edit/done.
 ;;  These try to do recursive moves to avoid collision, but that
@@ -1753,9 +1749,9 @@ Relative paths are converted to absolute, using the current
 ;;========
 ;; TODO
 
-;; o  would be useful to shut off expansion handling, (defcustom)
+;; o  could be useful to be able to shut off expansion handling, (a defcustom?)
 ;;    and simply refuse to complete a return from edit
-;;    until issue is resolved manually.
+;;    until a collision issue is resolved manually.
 
 ;; o  new class of features to trace chains of rectparas:
 ;;    o  would like a "skip to next rectpara" command.
