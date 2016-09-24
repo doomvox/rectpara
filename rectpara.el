@@ -153,11 +153,21 @@ semicolon' though I recommend something more convienient."
   (define-key rectpara-mode-map
     (format "%s\C-c" key-prefix)  'rectpara-exit)
 
-  ;; move rectpara right margin and reformat in-place
+  ;; adjust rectpara right margin and reformat in-place
   (define-key rectpara-mode-map
     (format "%s>" key-prefix)  'rectpara-expand-right-margin)
   (define-key rectpara-mode-map
     (format "%s<" key-prefix)  'rectpara-contract-right-margin)
+
+  ;; move the current rectpara around (EXPERIMENTAL)
+  (define-key rectpara-mode-map
+    (format "%sf" key-prefix)  'rectpara-move-rectpara-right)
+  (define-key rectpara-mode-map
+    (format "%sb" key-prefix)  'rectpara-move-rectpara-left)
+  (define-key rectpara-mode-map
+    (format "%sn" key-prefix)  'rectpara-move-rectpara-down)
+  (define-key rectpara-mode-map
+    (format "%sp" key-prefix)  'rectpara-move-rectpara-up)
 
   ;; the edit mode map:
   ;; nickname: "done"
@@ -897,10 +907,10 @@ If increased in size, opens up white space as needed."
            (new-right (+ right delta-width))
           )
 
-       (if (> delta-width 0)
-           (rectpara-deal-with-horizontal-expansion delta-width coords) )
+      (if (> delta-width 0)
+          (rectpara-deal-with-horizontal-expansion delta-width coords) )
 
-      (if (> delta-height 0) ;; no need for 1+
+      (if (> delta-height 0)
           (rectpara-deal-with-vertical-expansion delta-height delta-width coords) )
 
       (rectpara-clear-rectangle coords)
@@ -1538,14 +1548,14 @@ removes them, returns them with their coordinates"
 
 
 ;;-------
-;; rectpara modification "in place"
-;;
+;; rectpara modification in place
+;; (without explicit use of an edit buffer)
 
 (defun rectpara-expand-right-margin (delta)
   "Expand current rectpara, reformatting it in place.
 The given DELTA should be either a list containing an integer,
-or nil -- this is dictated by the raw form of interactive.
-If run without a prefix argument, will try to increase the
+or nil -- this is the way 'interactive' behaves with a 'P' argument.
+If run without a prefix argument, this will increase the
 right margin enough to produce a layout change, with
 a prefix argument, it just does the margin change that it's told
 to do, even if that changes nothing."
@@ -1559,7 +1569,7 @@ to do, even if that changes nothing."
            )
           (t ;; not delta
            (setq delta 1) ;; try steadily increasing delta until it changes
-           (let (( bailout-limit 80 )) ;; bailout if nothing's happening
+           (let (( bailout-limit 40 )) ;; bailout if nothing's happening
              (rectpara-edit-at-point)
              (catch 'UP
                (while ( < delta bailout-limit )
@@ -1572,11 +1582,9 @@ to do, even if that changes nothing."
              (rectpara-edit-mode-done)
              )))))
 
-;; TODO eliminate redundancy with above
 (defun rectpara-contract-right-margin (delta)
   "Contract current rectpara, formatting it in place."
   (interactive "P")
-
   (let ( changed )
     (cond ( delta ;; do precisely what we were told
            (rectpara-edit-at-point)
@@ -1586,7 +1594,7 @@ to do, even if that changes nothing."
            )
           (t ;; not delta
            (setq delta 1) ;; try steadily *decreasing* delta until it changes
-           (let (( bailout-limit 80 )) ;; bailout if nothing's happening
+           (let (( bailout-limit 20 )) ;; bailout if nothing's happening
              (rectpara-edit-at-point)
              (catch 'UP
                (while ( < delta bailout-limit )
@@ -1616,6 +1624,89 @@ Returns t if the buffer contents changes."
 
     (not (string= before after))
   ))
+
+
+
+;; EXPERIMENTAL.
+;;  Status: rp moves are functional, but with odd bugs not present in edit/done.
+;;  These try to do recursive moves to avoid collision, but that
+;;  feature only sometimes works.
+(defun rectpara-move-rectpara (&optional horizontal vertical)
+  "Move the current rectpara.
+Move the current rectpara the given HORIZONTAL or VERTICAL distance.
+The default is to move right one column (horizontal=+1 and vertical=0)."
+  (interactive)
+  (unless horizontal (setq horizontal 1))
+  (unless vertical   (setq vertical 0))
+
+  (let* (
+         (rectpara-with-metadata (rectpara-extract-rectpara-with-coords-and-rel-pos))
+         (original-rectpara (car      rectpara-with-metadata))
+         (coords   (car (cdr rectpara-with-metadata)))
+
+         ;; the original coordinates
+         (left  (nth 0 coords))
+         (top   (nth 1 coords))
+         (right (nth 2 coords))
+         (bot   (nth 3 coords))
+
+         (new-bot   (+ bot   vertical))
+         (new-right (+ right horizontal))
+
+         (new-left  (+ left horizontal))
+         (new-top   (+ top  vertical))
+         )
+
+    ;; rectpara collision avoidance:
+    (if (> horizontal 0)
+        (rectpara-deal-with-horizontal-expansion horizontal coords) )
+
+    (if (> vertical 0)
+        (rectpara-deal-with-vertical-expansion vertical horizontal coords) )
+
+    (rectpara-clear-rectangle coords)
+
+    ;; autovivify spaces through-out area of new rectpara (e.g. append newlines)
+    (rectpara-move-to-x-y-location new-right new-bot)
+
+    (rectpara-move-to-x-y-location-lite new-left new-top)
+    (picture-insert-rectangle original-rectpara)
+
+    (exchange-point-and-mark)
+    ))
+
+(defun rectpara-move-rectpara-right ( horizontal )
+  "Move the current rectpara.
+Move the current rectpara the given HORIZONTAL or VERTICAL distance.
+The default is to move right one column (horizontal=+1 and vertical=0)."
+  (interactive "p")
+  (rectpara-move-rectpara horizontal 0 )
+)
+
+(defun rectpara-move-rectpara-left ( horizontal )
+  "Move the current rectpara.
+Move the current rectpara the given HORIZONTAL or VERTICAL distance.
+The default is to move right one column (horizontal=+1 and vertical=0)."
+  (interactive "p")
+  (rectpara-move-rectpara (* -1 horizontal) 0 )
+)
+
+(defun rectpara-move-rectpara-down ( vertical )
+  "Move the current rectpara.
+Move the current rectpara the given HORIZONTAL or VERTICAL distance.
+The default is to move right one column (horizontal=+1 and vertical=0)."
+  (interactive "p")
+  (rectpara-move-rectpara 0 vertical )
+)
+
+(defun rectpara-move-rectpara-up ( vertical )
+  "Move the current rectpara.
+Move the current rectpara the given HORIZONTAL or VERTICAL distance.
+The default is to move right one column (horizontal=+1 and vertical=0)."
+  (interactive "p")
+  (rectpara-move-rectpara  0 (* -1 vertical) )
+)
+
 
 
 ;;---------
